@@ -1,0 +1,3 @@
+1. allow the ability to see build config for a tag
+2. DRY trtllm-serve for --tag and --show-config of tags or whatever
+3. have trtllm-serve actually use the config to populate key arguments
