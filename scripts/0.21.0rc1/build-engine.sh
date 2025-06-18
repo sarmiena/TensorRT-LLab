@@ -277,6 +277,7 @@ if [ ! -f "$MODEL_CONFIG_FILE" ]; then
 fi
 
 # Create output directory
+mkdir -p /ckpt
 mkdir -p "$OUTPUT_DIR"
 
 # Source the model configuration

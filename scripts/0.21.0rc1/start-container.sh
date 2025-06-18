@@ -30,8 +30,8 @@ if [ -z "$MODEL_NAME" ]; then
 fi
 
 # Check if directory exists
-if [ ! -d "./$MODEL_NAME" ]; then
-    echo "Error: Directory './$MODEL_NAME' not found in the current directory"
+if [ ! -d "./model_weights/$MODEL_NAME" ]; then
+    echo "Error: Directory './model_weights/$MODEL_NAME' not found in the current directory"
     exit 1
 fi
 
@@ -41,7 +41,7 @@ docker run --gpus $GPUS \
     -it --rm \
     -v ~/.cache/huggingface:/root/.cache/huggingface \
     -v ./scripts/0.21.0rc1:/scripts \
-    -v ./models/$MODEL_NAME:/model \
+    -v ./model_weights/$MODEL_NAME:/model \
     -v ./engines/0.21.0rc1:/engine \
     --net=host \
     --ipc=host \
