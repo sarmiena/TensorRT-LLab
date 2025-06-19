@@ -73,7 +73,7 @@ sudo make -C docker release_build CUDA_ARCHS="120-real"
 ```
 
 
-## Setup
+## Getting Started
 
 ### 1. Download Model from HuggingFace
 
