@@ -3,19 +3,19 @@
 # Get the directory of the script
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-echo "Attempting to build $MODEL"
 # Parse command line arguments
 TAG=""
 declare -A QUANTIZE_OVERRIDES
 declare -A TRTLLM_OVERRIDES
+
+declare -A COMPOSED_TRTLLM_ARGS_MAP
+declare -A COMPOSED_QUANTIZE_ARGS_MAP
+
 LIST_TAGS=false
 SHOW_BUILD_COMMAND=""
 
 while [[ $# -gt 0 ]]; do
     case $1 in
-        --model)
-            shift 2
-            ;;
         --tag)
             TAG="$2"
             shift 2
@@ -31,13 +31,13 @@ while [[ $# -gt 0 ]]; do
         --quantize-*)
             # Extract the argument name (remove --quantize- prefix)
             ARG_NAME="${1#--quantize-}"
-            QUANTIZE_OVERRIDES["$ARG_NAME"]="$2"
+            QUANTIZE_OVERRIDES["--$ARG_NAME"]="$2"
             shift 2
             ;;
         --trtllm-build-*)
             # Extract the argument name (remove --trtllm-build- prefix)
             ARG_NAME="${1#--trtllm-build-}"
-            TRTLLM_OVERRIDES["$ARG_NAME"]="$2"
+            TRTLLM_OVERRIDES["--$ARG_NAME"]="$2"
             shift 2
             ;;
         *)
@@ -54,17 +54,17 @@ done
 list_tags() {
     local model_filter="$1"
     
-    if [ ! -d "/engine" ]; then
-        echo "No engine directory found at /engine"
+    if [ ! -d "/engines" ]; then
+        echo "No engine directory found at /engines"
         return
     fi
     
     echo "Available tags:"
     
     if [ -n "$model_filter" ]; then
-        if [ -d "/engine/$model_filter" ]; then
+        if [ -d "/engines/$model_filter" ]; then
             echo "Model: $model_filter"
-            for tag_dir in "/engine/$model_filter"/*; do
+            for tag_dir in "/engines/$model_filter"/*; do
                 if [ -d "$tag_dir" ]; then
                     tag=$(basename "$tag_dir")
                     echo "  - $tag"
@@ -74,7 +74,7 @@ list_tags() {
             echo "No builds found for model: $model_filter"
         fi
     else
-        for model_dir in "/engine"/*; do
+        for model_dir in "/engines"/*; do
             if [ -d "$model_dir" ]; then
                 model=$(basename "$model_dir")
                 echo "Model: $model"
@@ -99,7 +99,7 @@ show_build_command() {
         exit 1
     fi
     
-    local build_command_file="/engine/$model/$tag/build-command.json"
+    local build_command_file="/engines/$model/$tag/build-command.json"
     
     if [ ! -f "$build_command_file" ]; then
         echo "Error: Build command file not found: $build_command_file"
@@ -138,34 +138,35 @@ fi
 build_quantize_cmd() {
     local base_args=("$@")
     local cmd="python3 /app/tensorrt_llm/examples/quantization/quantize.py"
-    
-    # Add base arguments
-    for arg in "${base_args[@]}"; do
-        cmd="$cmd $arg"
+
+    for ((i=0; i < ${#base_args[@]}; i++)); do
+        key="${base_args[$i]}"
+        next="${base_args[$((i + 1))]:-}"
+
+        if [[ "$next" == --* ]] || [[ -z "$next" ]]; then
+            val=""
+        else
+            val="$next"
+            ((i++))
+        fi
+
+        COMPOSED_QUANTIZE_ARGS_MAP["$key"]="$val"
     done
-    
-    # Apply overrides and additions
+
+    # Apply overrides
     for key in "${!QUANTIZE_OVERRIDES[@]}"; do
-        local value="${QUANTIZE_OVERRIDES[$key]}"
-        # Check if this argument already exists in base_args and remove it
-        local new_base_args=()
-        local skip_next=false
-        for i in "${!base_args[@]}"; do
-            if [ "$skip_next" = true ]; then
-                skip_next=false
-                continue
-            fi
-            if [[ "${base_args[$i]}" == "--$key" ]]; then
-                skip_next=true
-                continue
-            fi
-            new_base_args+=("${base_args[$i]}")
-        done
-        
-        # Add the override/new argument
-        cmd="$cmd --$key $value"
+        COMPOSED_QUANTIZE_ARGS_MAP["$key"]="${QUANTIZE_OVERRIDES[$key]}"
     done
-    
+
+    # Rebuild command
+    for key in "${!COMPOSED_QUANTIZE_ARGS_MAP[@]}"; do
+        if [[ -n "${COMPOSED_QUANTIZE_ARGS_MAP[$key]}" ]]; then
+            cmd+=" $key ${COMPOSED_QUANTIZE_ARGS_MAP[$key]}"
+        else
+            cmd+=" $key"
+        fi
+    done
+
     echo "$cmd"
 }
 
@@ -173,32 +174,27 @@ build_quantize_cmd() {
 build_trtllm_cmd() {
     local base_args=("$@")
     local cmd="trtllm-build"
+
+    for ((i=0; i < ${#base_args[@]}; i++)); do
+        key="${base_args[$i]}"
+        next="${base_args[$((i + 1))]:-}"
+
+        if [[ "$next" == --* ]] || [[ -z "$next" ]]; then
+            val=""
+        else
+            val="$next"
+            ((i++))
+        fi
     
-    # Add base arguments
-    for arg in "${base_args[@]}"; do
-        cmd="$cmd $arg"
+        COMPOSED_TRTLLM_ARGS_MAP["$key"]="$val"
     done
-    
-    # Apply overrides and additions
+
     for key in "${!TRTLLM_OVERRIDES[@]}"; do
-        local value="${TRTLLM_OVERRIDES[$key]}"
-        # Check if this argument already exists in base_args and remove it
-        local new_base_args=()
-        local skip_next=false
-        for i in "${!base_args[@]}"; do
-            if [ "$skip_next" = true ]; then
-                skip_next=false
-                continue
-            fi
-            if [[ "${base_args[$i]}" == "--$key" ]]; then
-                skip_next=true
-                continue
-            fi
-            new_base_args+=("${base_args[$i]}")
-        done
-        
-        # Add the override/new argument
-        cmd="$cmd --$key $value"
+    	COMPOSED_TRTLLM_ARGS_MAP["$key"]="${TRTLLM_OVERRIDES[$key]}"
+    done
+
+    for key in "${!COMPOSED_TRTLLM_ARGS_MAP[@]}"; do
+        cmd+=" $key ${COMPOSED_TRTLLM_ARGS_MAP[$key]}"
     done
     
     echo "$cmd"
@@ -206,6 +202,7 @@ build_trtllm_cmd() {
 
 # Function to save build command details
 save_build_command() {
+    echo "Saving '$output_dir/build-command.json'"
     local output_dir="$1"
     local quantize_cmd="$2"
     local trtllm_cmd="$3"
@@ -218,6 +215,18 @@ save_build_command() {
   "commands": {
     "quantize": "$quantize_cmd",
     "trtllm_build": "$trtllm_cmd"
+  },
+  "applied_arguments": {
+    "quantize": {
+$(for key in "${!COMPOSED_QUANTIZE_ARGS_MAP[@]}"; do
+    echo "      \"$key\": \"${COMPOSED_QUANTIZE_ARGS_MAP[$key]}\","
+done | sed '$s/,$//')
+    },
+    "trtllm_build": {
+$(for key in "${!COMPOSED_TRTLLM_ARGS_MAP[@]}"; do
+    echo "      \"$key\": \"${COMPOSED_TRTLLM_ARGS_MAP[$key]}\","
+done | sed '$s/,$//')
+    }
   },
   "overrides": {
     "quantize": {
@@ -235,23 +244,38 @@ done | sed '$s/,$//')
 EOF
 }
 
-# Define output directory
-OUTPUT_DIR="/engine/$MODEL/$TAG"
+confirm_and_delete_tagged_engine() {
+    local dir="$1"
+    local tag=$(basename "$dir")
 
-# Check if output directory exists and handle overwrite
-if [ -d "$OUTPUT_DIR" ]; then
-    echo "Warning: Directory $OUTPUT_DIR already exists."
-    read -p "Do you want to delete and overwrite? (y/N): " confirm
-    case $confirm in
+    if [[ ! -d "$dir" ]]; then
+        echo "'$tag' does not exist. Skipping deletion."
+        return 0
+    fi
+
+    echo
+    echo -ne "\033[1;33mDo you want to $2 '$tag'? (y/N):\033[0m \c"
+    read confirm
+    case "$confirm" in
         [Yy]* )
-            echo "Removing existing directory..."
-            rm -rf "$OUTPUT_DIR"
+            echo "Removing '$tag'..."
+            rm -rf "$dir"
             ;;
         * )
             echo "Exiting without changes."
             exit 0
             ;;
     esac
+}
+
+# Define output directory
+OUTPUT_DIR="/engines/$MODEL/$TAG"
+
+# Check if output directory exists and handle overwrite
+if [ -d "$OUTPUT_DIR" ]; then
+    echo
+    echo -ne "\033[1;31mWarning: Tag '$(basename "$OUTPUT_DIR")' already exists.\033[0m \c"
+    confirm_and_delete_tagged_engine "$OUTPUT_DIR" "delete and overwrite"
 fi
 
 # Clean up previous builds (transient ckpt and specific engine files)

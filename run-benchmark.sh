@@ -4,7 +4,7 @@ docker run --network host \
 	inference_benchmarker_latest inference-benchmarker --no-console   \
 		--url http://localhost:8000/v1   \
 		--max-vus 800 \
-		--duration 120s \
+		--duration 60s \
 		--warmup 15s \
 		--benchmark-kind rate \
 		--rates 100   \

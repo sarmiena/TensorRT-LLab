@@ -10,8 +10,8 @@ while [[ "$#" -gt 0 ]]; do
             ;;
         --list-tags)
             echo "Available tags for model $MODEL:"
-            if [ -d "/engine/$MODEL" ]; then
-                ls -1 /engine/$MODEL/ 2>/dev/null || echo "No tags found"
+            if [ -d "/engines/$MODEL" ]; then
+                ls -1 /engines/$MODEL/ 2>/dev/null || echo "No tags found"
             else
                 echo "No engine directory found for model $MODEL"
             fi
@@ -41,12 +41,12 @@ if [ -z "$MODEL" ]; then
 fi
 
 # Check if engine directory exists
-ENGINE_PATH="/engine/$MODEL/$TAG"
+ENGINE_PATH="/engines/$MODEL/$TAG"
 if [ ! -d "$ENGINE_PATH" ]; then
     echo "Error: Engine directory '$ENGINE_PATH' not found"
     echo "Available tags for model $MODEL:"
-    if [ -d "/engine/$MODEL" ]; then
-        ls -1 /engine/$MODEL/ 2>/dev/null || echo "No tags found"
+    if [ -d "/engines/$MODEL" ]; then
+        ls -1 /engines/$MODEL/ 2>/dev/null || echo "No tags found"
     else
         echo "No engine directory found for model $MODEL"
     fi

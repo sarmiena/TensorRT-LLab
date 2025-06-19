@@ -42,7 +42,7 @@ docker run --gpus $GPUS \
     -v ~/.cache/huggingface:/root/.cache/huggingface \
     -v ./scripts/0.21.0rc1:/scripts \
     -v ./model_weights/$MODEL_NAME:/model \
-    -v ./engines/0.21.0rc1:/engine \
+    -v ./engines/0.21.0rc1:/engines \
     --net=host \
     --ipc=host \
     --ulimit memlock=-1 \

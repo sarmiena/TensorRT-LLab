@@ -9,7 +9,6 @@ build_model() {
         "--qformat" "fp8"
         "--kv_cache_dtype" "fp8"
         "--output_dir" "/ckpt"
-        "--pp_size" "2"
         "--calib_size" "512"
     )
     
