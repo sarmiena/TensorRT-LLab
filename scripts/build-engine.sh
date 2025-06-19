@@ -15,8 +15,22 @@ declare -A COMPOSED_QUANTIZE_ARGS_MAP
 LIST_TAGS=false
 SHOW_BUILD_COMMAND=""
 
+print_usage() {
+      echo
+      echo "Usage:"
+      echo "  $0 --tag <tag> [--quantize-<arg> <value>] [--trtllm-build-<arg> <value>]"
+      echo "  $0 --list-tags"
+      echo "  $0 --show-build-metadata <tag>"
+      echo "  $0 --delete-tag <tag>"
+      echo "  $0 --help <tag>"
+}
+
 while [[ $# -gt 0 ]]; do
     case "$1" in
+        --help)
+          print_usage
+          exit 1
+          ;;
         --tag)
             TAG="$2"
             shift 2
@@ -29,7 +43,7 @@ while [[ $# -gt 0 ]]; do
             LIST_TAGS=true
             shift
             ;;
-        --show-build-command)
+        --show-build-metadata)
             SHOW_BUILD_COMMAND="$2"
             shift 2
             ;;
@@ -46,12 +60,7 @@ while [[ $# -gt 0 ]]; do
         *)
 	    echo
             echo "Unknown argument: $1"
-            echo
-            echo "Usage:"
-            echo "  $0 --tag <tag> [--quantize-<arg> <value>] [--trtllm-build-<arg> <value>]"
-            echo "  $0 --list-tags"
-            echo "  $0 --show-build-command <tag>"
-            echo "  $0 --delete-tag <tag>"
+            print_usage
             exit 1
             ;;
     esac
@@ -122,12 +131,12 @@ list_tags() {
 }
 
 # Function to show build command for a tag
-show_build_command() {
+show_build_metadata() {
     local model="$1"
     local tag="$2"
     
     if [ -z "$model" ] || [ -z "$tag" ]; then
-        echo "Error: Both --model and --show-build-command (tag) are required"
+        echo "Error: Both --model and --show-build-metadata (tag) are required"
         exit 1
     fi
     
@@ -168,7 +177,7 @@ if [ "$LIST_TAGS" = true ]; then
 fi
 
 if [ -n "$SHOW_BUILD_COMMAND" ]; then
-    show_build_command "$MODEL" "$SHOW_BUILD_COMMAND"
+    show_build_metadata "$MODEL" "$SHOW_BUILD_COMMAND"
     exit 0
 fi
 
