@@ -2,21 +2,25 @@
 
 MODEL_NAME=""
 GPUS="all"  # Default value
+CONTAINER="tensorrt_llm/release"
 
 # Define print_usage function first (before it's called)
 print_usage() {
-    echo "Usage: $0 <tensorrt-container-name> --model <model-name> [--gpus <gpu-spec>]"
+    echo "Usage:"
+    echo "  $0 [<tensorrt-container-name>] --model <model-name> [--gpus <gpu-spec>]"
+    echo
+    echo "Arguments:"
+    echo "  <tensorrt-container-name>   (Optional) Container image name."
+    echo "                              Defaults to \"tensorrt-llm/release\""
+    echo "  --model <model-name>        (Required) Path or name of the model to use."
+    echo "  --gpus <gpu-spec>           (Optional) GPU spec for Docker (e.g., \"all\", \"device=0,1\")"
 }
 
-CONTAINER=$1
-shift
-
-# Check if container name was provided
-if [[ -z $CONTAINER ]]; then
-    echo "Error: Container name is required as first argument"
-    print_usage
-    exit 1
+if [[ "$1" != --* ]]; then
+    CONTAINER="$1"
+    shift
 fi
+
 
 # Parse arguments
 while [[ "$#" -gt 0 ]]; do

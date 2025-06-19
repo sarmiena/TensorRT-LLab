@@ -371,13 +371,13 @@ echo "Build completed for model: $MODEL, tag: $TAG"
 if [ ${#QUANTIZE_OVERRIDES[@]} -gt 0 ]; then
     echo "Applied quantize.py overrides:"
     for key in "${!QUANTIZE_OVERRIDES[@]}"; do
-        echo "  --$key ${QUANTIZE_OVERRIDES[$key]}"
+        echo "  $key ${QUANTIZE_OVERRIDES[$key]}"
     done
 fi
 
 if [ ${#TRTLLM_OVERRIDES[@]} -gt 0 ]; then
     echo "Applied trtllm-build overrides:"
     for key in "${!TRTLLM_OVERRIDES[@]}"; do
-        echo "  --$key ${TRTLLM_OVERRIDES[$key]}"
+        echo "  $key ${TRTLLM_OVERRIDES[$key]}"
     done
 fi
