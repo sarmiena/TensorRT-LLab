@@ -1,6 +1,7 @@
 engines/**
 model_weights/**
 scripts/**/model.cache
+scripts/models/*.json
 venv/
 __pycache__/
 *.pyc
