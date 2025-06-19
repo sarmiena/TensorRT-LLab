@@ -124,9 +124,7 @@ Create a JSON configuration file in `scripts/models/` with the same name as your
 }
 ```
 
-## Building Models
-
-### Start TensorRT Container
+### 3. Start TensorRT Container
 
 ```bash
 Usage:
@@ -145,7 +143,7 @@ Arguments:
 ./scripts/start-container.sh --model meta-llama_Llama-3.1-8B-Instruct --gpus all
 ```
 
-### Build Engine
+### 4. Quantize and Build the Engine
 
 Inside the container, use the build script to create tagged engine builds. 
 
@@ -168,21 +166,22 @@ Usage:
 
 Basic build:
 ```bash
-/scripts/build-engine.sh --tag default
+ubuntu@host:TensorRT-LLab$ ./scripts/start-container.sh --model meta-llama_Llama-3.1-8B-Instruct --gpus all
+root@container:# /scripts/build-engine.sh --tag default
 ```
 
 You can also build with custom quantization and TensorRT options that will add/override the defaults in your model's json configuration.
 
 Build with custom quantization:
 ```bash
-/scripts/build-engine.sh --model meta-llama_Llama-3.1-8B-Instruct --tag int4-awq \
+root@container:# /scripts/build-engine.sh --model meta-llama_Llama-3.1-8B-Instruct --tag int4-awq \
   --quantize-qformat int4_awq \
   --quantize-kv_cache_dtype int8
 ```
 
 Build with custom TensorRT settings:
 ```bash
-/scripts/build-engine.sh --model meta-llama_Llama-3.1-8B-Instruct --tag high-throughput \
+root@container:# /scripts/build-engine.sh --model meta-llama_Llama-3.1-8B-Instruct --tag high-throughput \
   --trtllm-build-max_batch_size 1024 \
   --trtllm-build-max_num_tokens 32768
 ```
@@ -191,7 +190,7 @@ Build with custom TensorRT settings:
 The ./build-engine.sh --show-build-metadata <tag> is useful to for inspecting exactly what the script produced during quantization and engine building.
 
 ```
-./build-engine.sh --show-build-metadata default
+root@container:# /scripts/build-engine.sh --show-build-metadata default
 
 Build command for model 'meta-llama_Llama-3.1-8B-Instruct', tag 'default':
 {
@@ -235,7 +234,7 @@ Build command for model 'meta-llama_Llama-3.1-8B-Instruct', tag 'default':
 
 **List available tags:**
 ```bash
-./build-engine.sh --list-tags
+root@container:# /scripts/build-engine.sh --list-tags
 
 Available tags:
 Model: meta-llama_Llama-3.1-8B-Instruct
@@ -246,19 +245,19 @@ Model: meta-llama_Llama-3.1-8B-Instruct
 
 **Delete a tagged build:**
 ```bash
-/scripts# ./build-engine.sh --list-tags
+root@container:# /scripts/build-engine.sh --list-tags
 
 Available tags:
 Model: meta-llama_Llama-3.1-8B-Instruct
   - default
   - tp_size2
 
-/scripts# ./build-engine.sh --delete-tag tp_size2
+root@container:# /scripts/build-engine.sh --delete-tag tp_size2
 
 Do you want to delete 'tp_size2'? (y/N): y
 Removing 'tp_size2'...
 
-/scripts# ./build-engine.sh --list-tags
+root@container:# /scripts ./build-engine.sh --list-tags
 
 Available tags:
 Model: meta-llama_Llama-3.1-8B-Instruct
@@ -272,31 +271,23 @@ Model: meta-llama_Llama-3.1-8B-Instruct
 
 Inside the container:
 ```bash
-/scripts/trtllm-serve.sh --tag <tag-name>
+root@container:# /scripts/trtllm-serve.sh --tag <tag-name>
 ```
 
 **Examples:**
 ```bash
 # Serve the fp8-default build
-/scripts/trtllm-serve.sh --tag fp8-default
+root@container:# /scripts/trtllm-serve.sh --tag fp8-default
 
 # List available tags for the current model
-/scripts/trtllm-serve.sh --list-tags
+root@container:# /scripts/trtllm-serve.sh --list-tags
 ```
 
 The server will start on `localhost:8000` by default.
 
 ### Benchmark Model
-
-From the host machine, run the benchmarking script:
+Suggested to use inference-benchmarker from https://github.com/huggingface/inference-benchmarker from the host machine
 
 ```bash
-# Run benchmark
-./run-benchmark.sh
+ubuntu@host:TensorRT-LLab$ ./run-benchmark.example.sh
 ```
-
-The benchmark script is configured to:
-- Test at 100 RPS
-- Run for 60 seconds with 15s warmup
-- Use 200-token prompts and responses
-- Support up to 800 virtual users
