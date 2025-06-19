@@ -3,6 +3,21 @@
 MODEL_NAME=""
 GPUS="all"  # Default value
 
+# Define print_usage function first (before it's called)
+print_usage() {
+    echo "Usage: $0 <tensorrt-container-name> --model <model-name> [--gpus <gpu-spec>]"
+}
+
+CONTAINER=$1
+shift
+
+# Check if container name was provided
+if [[ -z $CONTAINER ]]; then
+    echo "Error: Container name is required as first argument"
+    print_usage
+    exit 1
+fi
+
 # Parse arguments
 while [[ "$#" -gt 0 ]]; do
     case $1 in
@@ -16,7 +31,7 @@ while [[ "$#" -gt 0 ]]; do
             ;;
         *)
             echo "Unknown parameter: $1"
-            echo "Usage: $0 --model <model-name> [--gpus <gpu-spec>]"
+            print_usage
             exit 1
             ;;
     esac
@@ -25,7 +40,7 @@ done
 # Validate --model arg
 if [ -z "$MODEL_NAME" ]; then
     echo "Error: --model argument is required"
-    echo "Usage: $0 --model <model-name>"
+    print_usage
     exit 1
 fi
 
@@ -40,11 +55,11 @@ docker run --gpus $GPUS \
     -e MODEL=$MODEL_NAME \
     -it --rm \
     -v ~/.cache/huggingface:/root/.cache/huggingface \
-    -v ./scripts/0.21.0rc1:/scripts \
+    -v ./scripts:/scripts \
     -v ./model_weights/$MODEL_NAME:/model \
-    -v ./engines/0.21.0rc1:/engines \
+    -v ./engines:/engines \
     --net=host \
     --ipc=host \
     --ulimit memlock=-1 \
     --ulimit stack=67108864 \
-    tensorrt_llm/release
+    $CONTAINER
