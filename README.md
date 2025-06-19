@@ -14,12 +14,30 @@ This project simplifies the process of:
 
 The system supports multiple models engines simultaneously:
 ```bash
-# Build different models
-/scripts/build-engine.sh --model llama-7b --tag fp8-optimized
-/scripts/build-engine.sh --model mistral-7b --tag int4-fast
-/scripts/build-engine.sh --model codellama-13b --tag fp16-accuracy
+ubuntu@host:TensorRT-LLab$ ./scripts/start-container.sh --model meta-llama_Llama-3.1-8B-Instruct --gpus all
+root@container:# /scripts/build-engine.sh --tag fp8-tp-optimized --quantize-tp_size 2
 
-# Each model maintains its own tagged builds
+root@container:# /scripts/build-engine.sh --list-tags
+
+ Available tags:
+ Model: meta-llama_Llama-3.1-8B-Instruct
+   - fp8-tp-optimized
+
+root@container:# /scripts/trtllm-serve.sh --tag fp8-tp-optimized
+```
+
+```bash
+ubuntu@host:TensorRT-LLab$ ./scripts/start-container.sh --model meta-llama_Llama-3.1-8B-Instruct --gpus all
+root@container:# /scripts/build-engine.sh --tag fp8-pp-optimized --quantize-pp_size 2
+
+root@container:# /scripts/build-engine.sh --list-tags
+
+ Available tags:
+ Model: meta-llama_Llama-3.1-8B-Instruct
+   - fp8-tp-optimized
+   - fp8-pp-optimized
+
+root@container:# /scripts/trtllm-serve.sh --tag fp8-pp-optimized
 ```
 
 ### Build Command Tracking
@@ -140,7 +158,7 @@ Arguments:
 
 **Example:**
 ```bash
-./scripts/start-container.sh --model meta-llama_Llama-3.1-8B-Instruct --gpus all
+ubuntu@host:TensorRT-LLab$ ./scripts/start-container.sh --model meta-llama_Llama-3.1-8B-Instruct --gpus all
 ```
 
 ### 4. Quantize and Build the Engine
@@ -150,7 +168,7 @@ Inside the container, use the build script to create tagged engine builds.
 NOTE: Scripts within the container will use the model the container was given during the ./start-container.sh invocation (via --model)
 
 ```bash
-/scripts/build-engine.sh --help
+root@container:# /scripts/build-engine.sh --help
 
 Usage:
   ./build-engine.sh --tag <tag> [--quantize-<arg> <value>] [--trtllm-build-<arg> <value>]
