@@ -11,13 +11,18 @@ declare -A TRTLLM_OVERRIDES
 declare -A COMPOSED_TRTLLM_ARGS_MAP
 declare -A COMPOSED_QUANTIZE_ARGS_MAP
 
+
 LIST_TAGS=false
 SHOW_BUILD_COMMAND=""
 
 while [[ $# -gt 0 ]]; do
-    case $1 in
+    case "$1" in
         --tag)
             TAG="$2"
+            shift 2
+            ;;
+        --delete-tag)
+            DELETE_TAG="$2"
             shift 2
             ;;
         --list-tags)
@@ -29,26 +34,53 @@ while [[ $# -gt 0 ]]; do
             shift 2
             ;;
         --quantize-*)
-            # Extract the argument name (remove --quantize- prefix)
             ARG_NAME="${1#--quantize-}"
             QUANTIZE_OVERRIDES["--$ARG_NAME"]="$2"
             shift 2
             ;;
         --trtllm-build-*)
-            # Extract the argument name (remove --trtllm-build- prefix)
             ARG_NAME="${1#--trtllm-build-}"
             TRTLLM_OVERRIDES["--$ARG_NAME"]="$2"
             shift 2
             ;;
         *)
+	    echo
             echo "Unknown argument: $1"
-            echo "Usage: $0 --model <model_name> --tag <tag> [--quantize-<arg> <value>] [--trtllm-build-<arg> <value>]"
-            echo "       $0 --list-tags [--model <model_name>]"
-            echo "       $0 --show-build-command <tag> --model <model_name>"
+            echo
+            echo "Usage:"
+            echo "  $0 --tag <tag> [--quantize-<arg> <value>] [--trtllm-build-<arg> <value>]"
+            echo "  $0 --list-tags"
+            echo "  $0 --show-build-command <tag>"
+            echo "  $0 --delete-tag <tag>"
             exit 1
             ;;
     esac
 done
+
+confirm_and_delete_tagged_engine() {
+    local dir="$1"
+    local tag=$(basename "$dir")
+
+    if [[ ! -d "$dir" ]]; then
+        echo "'$tag' does not exist. Skipping deletion."
+        return 0
+    fi
+
+    echo
+    echo -ne "\033[1;33mDo you want to $2 '$tag'? (y/N):\033[0m \c"
+    read confirm
+    case "$confirm" in
+        [Yy]* )
+            echo "Removing '$tag'..."
+            rm -rf "$dir"
+            ;;
+        * )
+            echo "Exiting without changes."
+            exit 0
+            ;;
+    esac
+}
+
 
 # Function to list all tags
 list_tags() {
@@ -106,8 +138,27 @@ show_build_command() {
         exit 1
     fi
     
-    echo "Build command for model '$model', tag '$tag':"
-    cat "$build_command_file"
+    echo
+    echo -ne "\033[1;33mBuild command for model '$model', tag '$tag':\033[0m\c"
+    echo
+    cat "$build_command_file" | jq
+}
+
+build_model() {
+    mapfile -t quantize_base_args < <(jq -r '.quantize | to_entries[] | "--\(.key) \(.value)"' "$MODEL_CONFIG_FILE")
+    mapfile -t trtllm_base_args < <(jq -r '.trtllm_build | to_entries[] | "--\(.key) \(.value)"' "$MODEL_CONFIG_FILE")
+    trtllm_base_args+=("--output_dir" "$MODEL_OUTPUT_DIR")
+
+    build_quantize_cmd "${quantize_base_args[@]}"
+    build_trtllm_cmd "${trtllm_base_args[@]}"
+
+    echo "Running: $COMPOSED_QUANTIZE_COMMAND"
+    eval "$COMPOSED_QUANTIZE_COMMAND"
+
+    echo "Running: $COMPOSED_TRTLLM_COMMAND"
+    eval "$COMPOSED_TRTLLM_COMMAND"
+
+    save_build_command
 }
 
 # Handle special modes
@@ -128,10 +179,29 @@ if [ -z "$MODEL" ]; then
     exit 1
 fi
 
+if [[ -n "${DELETE_TAG:-}" ]]; then
+    tag_dir="/engines/$MODEL/$DELETE_TAG"
+
+    if [[ -d "$tag_dir" ]]; then
+        confirm_and_delete_tagged_engine "$tag_dir" "delete"
+	exit 1
+    else
+        echo -ne "\033[1;31mTag '$DELETE_TAG' does not exist at: $tag_dir\033[0m\c" >&2
+	echo
+        exit 1
+    fi
+fi
+
 if [ -z "$TAG" ]; then
     echo "Error: --tag argument is required"
     echo "Usage: $0 --model <model_name> --tag <tag> [--quantize-<arg> <value>] [--trtllm-build-<arg> <value>]"
     exit 1
+fi
+
+if [ "$DELETE_TAG" ]; then
+    echo
+    echo -ne "\033[1;31mWarning: Tag '$(basename "$OUTPUT_DIR")' already exists.\033[0m \c"
+    confirm_and_delete_tagged_engine "$OUTPUT_DIR" "delete and overwrite"
 fi
 
 # Function to build quantize.py command with overrides
@@ -167,7 +237,7 @@ build_quantize_cmd() {
         fi
     done
 
-    echo "$cmd"
+    COMPOSED_QUANTIZE_COMMAND="$cmd"
 }
 
 # Function to build trtllm-build command with overrides
@@ -197,24 +267,21 @@ build_trtllm_cmd() {
         cmd+=" $key ${COMPOSED_TRTLLM_ARGS_MAP[$key]}"
     done
     
-    echo "$cmd"
+    COMPOSED_TRTLLM_COMMAND="$cmd"
 }
 
 # Function to save build command details
 save_build_command() {
-    echo "Saving '$output_dir/build-command.json'"
-    local output_dir="$1"
-    local quantize_cmd="$2"
-    local trtllm_cmd="$3"
+    echo "Saving '$OUTPUT_DIR/build-command.json'"
     
-    cat > "$output_dir/build-command.json" << EOF
+    cat > "$OUTPUT_DIR/build-command.json" << EOF
 {
   "timestamp": "$(date -Iseconds)",
   "model": "$MODEL",
   "tag": "$TAG",
   "commands": {
-    "quantize": "$quantize_cmd",
-    "trtllm_build": "$trtllm_cmd"
+    "quantize": "$COMPOSED_QUANTIZE_COMMAND",
+    "trtllm_build": "$COMPOSED_TRTLLM_COMMAND"
   },
   "applied_arguments": {
     "quantize": {
@@ -244,30 +311,6 @@ done | sed '$s/,$//')
 EOF
 }
 
-confirm_and_delete_tagged_engine() {
-    local dir="$1"
-    local tag=$(basename "$dir")
-
-    if [[ ! -d "$dir" ]]; then
-        echo "'$tag' does not exist. Skipping deletion."
-        return 0
-    fi
-
-    echo
-    echo -ne "\033[1;33mDo you want to $2 '$tag'? (y/N):\033[0m \c"
-    read confirm
-    case "$confirm" in
-        [Yy]* )
-            echo "Removing '$tag'..."
-            rm -rf "$dir"
-            ;;
-        * )
-            echo "Exiting without changes."
-            exit 0
-            ;;
-    esac
-}
-
 # Define output directory
 OUTPUT_DIR="/engines/$MODEL/$TAG"
 
@@ -284,14 +327,14 @@ rm -rf "$OUTPUT_DIR/config.json"
 rm -rf "$OUTPUT_DIR"/*.engine
 
 # Check if model configuration file exists
-MODEL_CONFIG_FILE="$SCRIPT_DIR/models/${MODEL}.sh"
+MODEL_CONFIG_FILE="$SCRIPT_DIR/models/${MODEL}.json"
 if [ ! -f "$MODEL_CONFIG_FILE" ]; then
     echo "Error: Model configuration file not found: $MODEL_CONFIG_FILE"
     echo "Available models:"
     if [ -d "$SCRIPT_DIR/models" ]; then
-        for model_file in "$SCRIPT_DIR/models"/*.sh; do
+        for model_file in "$SCRIPT_DIR/models"/*.json; do
             if [ -f "$model_file" ]; then
-                basename "$model_file" .sh | sed 's/^/  - /'
+                basename "$model_file" .json | sed 's/^/  - /'
             fi
         done
     else
@@ -303,9 +346,6 @@ fi
 # Create output directory
 mkdir -p /ckpt
 mkdir -p "$OUTPUT_DIR"
-
-# Source the model configuration
-source "$MODEL_CONFIG_FILE"
 
 # Execute the model build
 echo "Building $MODEL with tag '$TAG'..."
