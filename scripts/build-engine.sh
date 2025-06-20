@@ -219,21 +219,25 @@ build_quantize_cmd() {
     local base_args=("$@")
     local cmd="python3 /app/tensorrt_llm/examples/quantization/quantize.py"
 
+    # First, parse the base args from JSON config (format: "--key value")
     for ((i=0; i < ${#base_args[@]}; i++)); do
-        key="${base_args[$i]}"
-        next="${base_args[$((i + 1))]:-}"
-
-        if [[ "$next" == --* ]] || [[ -z "$next" ]]; then
+        arg="${base_args[$i]}"
+        
+        # Split "--key value" into key and value
+        if [[ "$arg" =~ ^(--[^[:space:]]+)[[:space:]]+(.+)$ ]]; then
+            key="${BASH_REMATCH[1]}"
+            val="${BASH_REMATCH[2]}"
+        elif [[ "$arg" =~ ^(--[^[:space:]]+)$ ]]; then
+            key="${BASH_REMATCH[1]}"
             val=""
         else
-            val="$next"
-            ((i++))
+            continue  # Skip malformed args
         fi
 
         COMPOSED_QUANTIZE_ARGS_MAP["$key"]="$val"
     done
 
-    # Apply overrides
+    # Apply overrides (these are already in correct key=value format)
     for key in "${!QUANTIZE_OVERRIDES[@]}"; do
         COMPOSED_QUANTIZE_ARGS_MAP["$key"]="${QUANTIZE_OVERRIDES[$key]}"
     done
@@ -255,26 +259,36 @@ build_trtllm_cmd() {
     local base_args=("$@")
     local cmd="trtllm-build"
 
+    # First, parse the base args from JSON config (format: "--key value")
     for ((i=0; i < ${#base_args[@]}; i++)); do
-        key="${base_args[$i]}"
-        next="${base_args[$((i + 1))]:-}"
-
-        if [[ "$next" == --* ]] || [[ -z "$next" ]]; then
+        arg="${base_args[$i]}"
+        
+        # Split "--key value" into key and value
+        if [[ "$arg" =~ ^(--[^[:space:]]+)[[:space:]]+(.+)$ ]]; then
+            key="${BASH_REMATCH[1]}"
+            val="${BASH_REMATCH[2]}"
+        elif [[ "$arg" =~ ^(--[^[:space:]]+)$ ]]; then
+            key="${BASH_REMATCH[1]}"
             val=""
         else
-            val="$next"
-            ((i++))
+            continue  # Skip malformed args
         fi
-    
+
         COMPOSED_TRTLLM_ARGS_MAP["$key"]="$val"
     done
 
+    # Apply overrides (these are already in correct key=value format)
     for key in "${!TRTLLM_OVERRIDES[@]}"; do
-    	COMPOSED_TRTLLM_ARGS_MAP["$key"]="${TRTLLM_OVERRIDES[$key]}"
+        COMPOSED_TRTLLM_ARGS_MAP["$key"]="${TRTLLM_OVERRIDES[$key]}"
     done
 
+    # Rebuild command
     for key in "${!COMPOSED_TRTLLM_ARGS_MAP[@]}"; do
-        cmd+=" $key ${COMPOSED_TRTLLM_ARGS_MAP[$key]}"
+        if [[ -n "${COMPOSED_TRTLLM_ARGS_MAP[$key]}" ]]; then
+            cmd+=" $key ${COMPOSED_TRTLLM_ARGS_MAP[$key]}"
+        else
+            cmd+=" $key"
+        fi
     done
     
     COMPOSED_TRTLLM_COMMAND="$cmd"

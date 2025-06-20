@@ -4,8 +4,9 @@ TAG=""
 show_help() {
     echo "Usage: $0 --tag <tag-name> [--config <config-name>]"
     echo "       $0 --list-tags"
-    echo "       $0 --tag <tag-name> --list-configs"
-    echo "       $0 --tag <tag-name> --show-config <config-name>"
+    echo "       $0 --tag <tag-name> --list-serve-configs"
+    echo "       $0 --tag <tag-name> --show-serve-config <config-name>"
+    echo "       $0 --tag <tag-name> --edit"
     exit 1
 }
 
@@ -16,7 +17,7 @@ while [[ "$#" -gt 0 ]]; do
             TAG="$2"
             shift 2
             ;;
-	--config)
+	      --config)
             SERVE_CONFIG="$2"
             shift 2
             ;;
@@ -29,9 +30,13 @@ while [[ "$#" -gt 0 ]]; do
             fi
             exit 0
             ;;
-	 --list-configs)
+        --edit)
+            EDIT_CONFIG=true
+            shift
+            ;;
+	      --list-serve-configs)
             if [ -z "$TAG" ]; then
-                echo "Error: --tag is required with --list-configs"
+                echo "Error: --tag is required with --list-serve-configs"
                 exit 1
             fi
             ENGINE_PATH="/engines/$MODEL/$TAG"
@@ -44,9 +49,9 @@ while [[ "$#" -gt 0 ]]; do
             fi
             exit 0
             ;;
-        --show-config)
+        --show-serve-config)
             if [ -z "$TAG" ]; then
-                echo "Error: --tag is required with --show-config"
+                echo "Error: --tag is required with --show-serve-config"
                 exit 1
             fi
             SHOW_CONFIG_NAME="$2"
@@ -90,8 +95,55 @@ fi
 SERVE_ARGS_FILE="$ENGINE_PATH/serve-args.json"
 if [ ! -f "$SERVE_ARGS_FILE" ]; then
     echo "Warning: serve-args.json not found at $SERVE_ARGS_FILE"
+    if [ "$EDIT_CONFIG" = true ]; then
+      echo "Cannot edit: serve-args.json file does not exist"
+      exit 1
+    fi
     echo "Using basic configuration..."
     BASIC_SERVE=true
+fi
+
+if [ "$EDIT_CONFIG" = true ]; then
+    echo "Opening serve-args.json for editing..."
+    # Use EDITOR environment variable, fall back to common editors
+    EDITOR_CMD="${EDITOR:-${VISUAL:-$(which vim 2>/dev/null || which vi 2>/dev/null || which nano 2>/dev/null)}}"
+
+    if [ -z "$EDITOR_CMD" ]; then
+        echo "Error: No suitable editor found. Please set EDITOR environment variable."
+        echo "Available options: vim, vi, nano"
+        exit 1
+    fi
+
+    echo "Using editor: $EDITOR_CMD"
+    echo "File: $SERVE_ARGS_FILE"
+
+    # Validate JSON after editing
+    TEMP_FILE=$(mktemp)
+    cp "$SERVE_ARGS_FILE" "$TEMP_FILE"
+
+    $EDITOR_CMD "$SERVE_ARGS_FILE"
+
+    # Check if the edited file is valid JSON
+    if ! jq . "$SERVE_ARGS_FILE" > /dev/null 2>&1; then
+        echo
+        echo "Error: Invalid JSON detected after editing!"
+        echo -ne "\033[1;31mRestore backup? (y/N):\033[0m \c"
+        read restore
+        case "$restore" in
+            [Yy]* )
+                cp "$TEMP_FILE" "$SERVE_ARGS_FILE"
+                echo "Backup restored."
+                ;;
+            * )
+                echo "Keeping current file. Please fix JSON syntax manually."
+                ;;
+        esac
+    else
+        echo "JSON validation passed."
+    fi
+
+    rm -f "$TEMP_FILE"
+    exit 0
 fi
 
 show_config() {
