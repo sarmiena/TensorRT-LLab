@@ -168,6 +168,7 @@ build_model() {
     eval "$COMPOSED_TRTLLM_COMMAND"
 
     save_build_command
+    generate_serve_args
 }
 
 # Handle special modes
@@ -314,6 +315,64 @@ done | sed '$s/,$//')
 $(for key in "${!TRTLLM_OVERRIDES[@]}"; do
     echo "      \"$key\": \"${TRTLLM_OVERRIDES[$key]}\","
 done | sed '$s/,$//')
+    }
+  }
+}
+EOF
+}
+
+generate_serve_args() {
+    echo "Generating '$OUTPUT_DIR/serve-args.json'"
+
+    # Allowable trtllm-serve arguments
+    TRTLLM_SERVE_ARGS=(
+        "--config_file" "--metadata_server_config_file" "--server_start_timeout"
+        "--request_timeout" "--log_level" "--tokenizer" "--host" "--port"
+        "--backend" "--max_beam_width" "--max_batch_size" "--max_num_tokens"
+        "--max_seq_len" "--tp_size" "--pp_size" "--ep_size" "--cluster_size"
+        "--gpus_per_node" "--kv_cache_free_gpu_memory_fraction" "--num_postprocess_workers"
+    )
+
+    # Build default args from trtllm_build configuration
+    declare -A DEFAULT_SERVE_ARGS
+
+    for key in "${!COMPOSED_TRTLLM_ARGS_MAP[@]}"; do
+        # Check if this build arg is allowed for serve
+        for allowed_arg in "${TRTLLM_SERVE_ARGS[@]}"; do
+            if [[ "$key" == "$allowed_arg" ]]; then
+                DEFAULT_SERVE_ARGS["$key"]="${COMPOSED_TRTLLM_ARGS_MAP[$key]}"
+                break
+            fi
+        done
+    done
+
+    # Check COMPOSED_QUANTIZE_ARGS_MAP for applicable serve args
+    for key in "${!COMPOSED_QUANTIZE_ARGS_MAP[@]}"; do
+        for allowed_arg in "${TRTLLM_SERVE_ARGS[@]}"; do
+            if [[ "$key" == "$allowed_arg" ]]; then
+                # Only add if not already present from trtllm args (trtllm takes precedence)
+                if [[ -z "${DEFAULT_SERVE_ARGS[$key]:-}" ]]; then
+                    DEFAULT_SERVE_ARGS["$key"]="${COMPOSED_QUANTIZE_ARGS_MAP[$key]}"
+                fi
+                break
+            fi
+        done
+    done
+
+    # Create serve-args.json
+    cat > "$OUTPUT_DIR/serve-args.json" << EOF
+{
+  "default": {
+    "notes": "Defaults created from build configuration on $(date -Iseconds)",
+    "args": {
+$(for key in "${!DEFAULT_SERVE_ARGS[@]}"; do
+    echo "      \"$key\": \"${DEFAULT_SERVE_ARGS[$key]}\","
+done | sed '$s/,$//')
+    }
+  },
+  "my_custom_args": {
+    "notes": "Add your custom serving configuration here. Supported args: $TRTLLM_SERVE_ARGS",
+    "args": {
     }
   }
 }
