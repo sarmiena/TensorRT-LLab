@@ -1,0 +1,75 @@
+#!/bin/bash
+# Main help content for trt-llab
+
+show_main_help() {
+    echo "TensorRT-LLM Lab (trt-llab)"
+    echo "==========================="
+    echo
+    echo "A comprehensive toolkit for managing different quantizations, builds, and models"
+    echo "for fast testing and benchmarking with TensorRT-LLM."
+    echo
+    echo "OVERVIEW"
+    echo "--------"
+    echo "This project simplifies the process of:"
+    echo "  • Managing multiple model variants with tagged configurations"
+    echo "  • Building TensorRT-LLM engines with different quantization settings"
+    echo "  • Serving models for benchmarking and testing"
+    echo "  • Comparing performance across different build configurations"
+    echo
+    echo "GLOBAL USAGE"
+    echo "------------"
+    echo "  $0 <command> --model <model-name> [--gpus <gpu-spec>] [--container <image>] [command-args...]"
+    echo
+    echo "GLOBAL ARGUMENTS"
+    echo "----------------"
+    echo "  --model <model-name>        (Required) Path or name of the model to use"
+    echo "  --gpus <gpu-spec>           (Optional) GPU spec for Docker (default: 'all')"
+    echo "                              Examples: 'all', 'device=0,1', 'device=0'"
+    echo "  --container <image>         (Optional) Container image (default: 'tensorrt_llm/release')"
+    echo
+    echo "COMMANDS"
+    echo "--------"
+    echo "  build-engine                Build TensorRT engines with quantization"
+    echo "  trtllm-serve                Serve built models for inference"
+    echo
+    echo "QUICK START EXAMPLES"
+    echo "--------------------"
+    echo "  # Build a default engine"
+    echo "  $0 build-engine --model meta-llama_Llama-3.1-8B-Instruct --tag default"
+    echo
+    echo "  # Build with custom quantization"
+    echo "  $0 build-engine --model meta-llama_Llama-3.1-8B-Instruct --tag int4-awq \\"
+    echo "    --quantize-qformat int4_awq --quantize-kv_cache_dtype int8"
+    echo
+    echo "  # Build with tensor parallelism"
+    echo "  $0 build-engine --model meta-llama_Llama-3.1-8B-Instruct --tag tp2 \\"
+    echo "    --trtllm-build-tp_size 2"
+    echo
+    echo "  # Serve a built model"
+    echo "  $0 trtllm-serve --model meta-llama_Llama-3.1-8B-Instruct --tag default"
+    echo
+    echo "  # List available configurations"
+    echo "  $0 build-engine --model meta-llama_Llama-3.1-8B-Instruct --list-tags"
+    echo
+    echo "WORKFLOW"
+    echo "--------"
+    echo "1. Download model to ./model_weights/<model-name>/"
+    echo "2. Create configuration in ./scripts/models/<model-name>.json"
+    echo "3. Build engines with different tags: build-engine --tag <name>"
+    echo "4. Serve models: trtllm-serve --tag <name>"
+    echo "5. Benchmark with external tools"
+    echo
+    echo "PROJECT STRUCTURE"
+    echo "-----------------"
+    echo "  ."
+    echo "  ├── engines/              # Built TensorRT engines (organized by model/tag)"
+    echo "  ├── model_weights/        # Downloaded HuggingFace models"
+    echo "  ├── scripts/"
+    echo "  │   ├── models/          # Model configuration files"
+    echo "  │   ├── build-engine     # Engine building script"
+    echo "  │   └── trtllm-serve     # Model serving script"
+    echo "  └── run-benchmark.sh     # Benchmarking script"
+    echo
+}
+
+export -f show_main_help
