@@ -23,6 +23,41 @@ print_usage() {
       echo "  $0 --show-build-metadata <tag>"
       echo "  $0 --delete-tag <tag>"
       echo "  $0 --help <tag>"
+      echo
+      echo "Usage:"
+      echo "  $0 --tag <tag> [--quantize-<arg> <value>] [--trtllm-build-<arg> <value>]"
+      echo "  $0 --list-tags"
+      echo "  $0 --show-build-metadata <tag>"
+      echo "  $0 --delete-tag <tag>"
+      echo "  $0 --help"
+      echo
+      echo "Description:"
+      echo "  Build TensorRT-LLM engines with different quantization settings and configurations."
+      echo "  Each build is tagged for easy management and comparison."
+      echo
+      echo "Arguments:"
+      echo "  --tag <tag>                     Name/tag for this build configuration"
+      echo "  --quantize-<arg> <value>        Override quantization arguments"
+      echo "  --trtllm-build-<arg> <value>    Override TensorRT build arguments"
+      echo "  --list-tags                     Show all available tags for current model"
+      echo "  --show-build-metadata <tag>     Show build details for specified tag"
+      echo "  --delete-tag <tag>              Delete specified tag"
+			echo
+      echo "Examples:"
+      echo "  # Build with custom quantization"
+      echo "  $0 --tag int4-awq --quantize-qformat int4_awq --quantize-kv_cache_dtype int8"
+      echo
+      echo "  # Build with custom TensorRT settings"
+      echo "  $0 --tag high-throughput --trtllm-build-max_batch_size 1024 --trtllm-build-max_num_tokens 32768"
+      echo
+      echo "  # Build with tensor parallelism"
+      echo "  $0 --tag tp2-optimized --trtllm-build-tp_size 2"
+      echo
+      echo "  # List available tags"
+      echo "  $0 --list-tags"
+      echo
+      echo "  # Show build details"
+      echo "  $0 --show-build-metadata default"
 }
 
 while [[ $# -gt 0 ]]; do
@@ -59,10 +94,10 @@ while [[ $# -gt 0 ]]; do
             ;;
         *)
 	    echo
-            echo "Unknown argument: $1"
-            print_usage
-            exit 1
-            ;;
+        echo "Unknown argument: $1"
+        print_usage
+        exit 1
+        ;;
     esac
 done
 
@@ -156,10 +191,11 @@ show_build_metadata() {
 build_model() {
     mapfile -t quantize_base_args < <(jq -r '.quantize | to_entries[] | "--\(.key) \(.value)"' "$MODEL_CONFIG_FILE")
     mapfile -t trtllm_base_args < <(jq -r '.trtllm_build | to_entries[] | "--\(.key) \(.value)"' "$MODEL_CONFIG_FILE")
-    trtllm_base_args+=("--output_dir" "$MODEL_OUTPUT_DIR")
 
+    trtllm_base_args+=("--output_dir $MODEL_OUTPUT_DIR")
     build_quantize_cmd "${quantize_base_args[@]}"
     build_trtllm_cmd "${trtllm_base_args[@]}"
+
 
     echo "Running: $COMPOSED_QUANTIZE_COMMAND"
     eval "$COMPOSED_QUANTIZE_COMMAND"
@@ -171,13 +207,22 @@ build_model() {
     generate_serve_args
 }
 
-# Handle special modes
 if [ "$LIST_TAGS" = true ]; then
+    if [ -z "$MODEL" ]; then
+        echo "Error: MODEL environment variable is required for --list-tags"
+        echo "This command should be run through the trt-llab wrapper with --model specified"
+        exit 1
+    fi
     list_tags "$MODEL"
     exit 0
 fi
 
 if [ -n "$SHOW_BUILD_COMMAND" ]; then
+    if [ -z "$MODEL" ]; then
+        echo "Error: MODEL environment variable is required for --show-build-metadata"
+        echo "This command should be run through the trt-llab wrapper with --model specified"
+        exit 1
+    fi
     show_build_metadata "$MODEL" "$SHOW_BUILD_COMMAND"
     exit 0
 fi

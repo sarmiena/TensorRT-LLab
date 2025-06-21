@@ -1,0 +1,193 @@
+#!/bin/bash
+
+MODEL_NAME=""
+GPUS="all"  # Default value
+CONTAINER="tensorrt_llm/release"
+REMAINING_ARGS=()
+
+list_available_models() {
+    echo "Available models:"
+    if [ -d "./model_weights" ]; then
+        local found_models=false
+        for model_dir in ./model_weights/*/; do
+            if [ -d "$model_dir" ]; then
+                model_name=$(basename "$model_dir")
+                # Skip .gitkeep and other non-model files
+                if [ "$model_name" != ".gitkeep" ] && [ -d "$model_dir" ]; then
+                    echo "  - $model_name"
+                    found_models=true
+                fi
+            fi
+        done
+
+        if [ "$found_models" = false ]; then
+            echo "  No models found in ./model_weights/"
+            echo
+            echo "To add a model, download it to ./model_weights/<model-name>/"
+            echo "Example:"
+            echo "  git clone https://huggingface.co/meta-llama/Llama-3.1-8B-Instruct model_weights/meta-llama_Llama-3.1-8B-Instruct"
+        fi
+    else
+        echo "  model_weights directory not found"
+        echo "  Please create ./model_weights/ and add your models there"
+    fi
+}
+
+
+# Define print_usage function first (before it's called)
+print_usage() {
+    echo "TensorRT-LLM Lab - Container Wrapper"
+    echo
+    echo "Usage:"
+    echo "  $0 <command> --model <model-name> [--gpus <gpu-spec>] [command-specific-args...]"
+    echo
+    echo "Commands:"
+    echo "  build-engine     Build TensorRT engine with specified configuration"
+    echo "  trtllm-serve     Serve a built model"
+    echo
+    echo "Global Arguments:"
+    echo "  --model <model-name>        (Required) Path or name of the model to use"
+    echo "  --gpus <gpu-spec>           (Optional) GPU spec for Docker (e.g., \"all\", \"device=0,1\")"
+    echo "  --container <image>         (Optional) Container image name (default: tensorrt_llm/release)"
+    echo
+    echo "Examples:"
+    echo "  $0 build-engine --model meta-llama_Llama-3.1-8B-Instruct --tag default"
+    echo "  $0 build-engine --model meta-llama_Llama-3.1-8B-Instruct --tag fp8-optimized --quantize-qformat fp8"
+    echo "  $0 trtllm-serve --model meta-llama_Llama-3.1-8B-Instruct --tag default"
+    echo
+    echo "For command-specific help:"
+    echo "  $0 build-engine --help"
+    echo "  $0 trtllm-serve --help"
+    echo
+    list_available_models
+}
+
+# Check if first argument is a valid command
+VALID_COMMANDS=("build-engine" "trtllm-serve")
+if [[ "$#" -eq 0 ]]; then
+    print_usage
+    exit 1
+fi
+
+COMMAND="$1"
+shift
+
+# Validate command
+if [[ ! " ${VALID_COMMANDS[*]} " =~ " ${COMMAND} " ]]; then
+    echo "Error: Unknown command '$COMMAND'"
+    echo
+    print_usage
+    exit 1
+fi
+
+# Parse arguments
+while [[ "$#" -gt 0 ]]; do
+    case $1 in
+        --model)
+            MODEL_NAME="$2"
+            shift 2
+            ;;
+        --gpus)
+            GPUS="$2"
+            shift 2
+            ;;
+        --container)
+            CONTAINER="$2"
+            shift 2
+            ;;
+        --help)
+            # If --help is requested, we need to run the command in container to show its help
+            if [ -z "$MODEL_NAME" ]; then
+              print_usage
+              exit 1
+            else
+              # Pass --help through to the command
+              REMAINING_ARGS+=("$1")
+              shift
+            fi
+            ;;
+        *)
+            # All other arguments get passed to the command
+            REMAINING_ARGS+=("$1")
+            shift
+            ;;
+        *)
+            echo "Unknown parameter: $1"
+            print_usage
+            exit 1
+            ;;
+    esac
+done
+
+# Special handling for help when no model is provided
+if [ -z "$MODEL_NAME" ] && [[ ! " ${REMAINING_ARGS[*]} " =~ " --help " ]]; then
+    echo "Error: --model argument is required"
+    echo
+    print_usage
+    exit 1
+fi
+
+if [ -n "$MODEL_NAME" ] && [ ! -d "./model_weights/$MODEL_NAME" ]; then
+    echo "Error: Directory './model_weights/$MODEL_NAME' not found in the current directory"
+    echo
+    list_available_models
+    exit 1
+fi
+
+DOCKER_ARGS=(
+    "run" "--gpus" "$GPUS"
+    "-e" "MODEL=$MODEL_NAME"
+    "--rm"
+    "-it"
+    "-v" "$HOME/.cache/huggingface:/root/.cache/huggingface"
+    "-v" "./scripts:/scripts"
+    "-v" "./engines:/engines"
+    "--net=host"
+    "--ipc=host"
+    "--ulimit" "memlock=-1"
+    "--ulimit" "stack=67108864"
+)
+
+if [ -n "$MODEL_NAME" ]; then
+    DOCKER_ARGS+=("-v" "./model_weights/$MODEL_NAME:/model")
+fi
+
+DOCKER_ARGS+=("$CONTAINER" "/scripts/$COMMAND")
+DOCKER_ARGS+=("${REMAINING_ARGS[@]}")
+
+echo -e "\033[32mRunning docker:"
+echo -n "    docker run"
+
+i=1  # Skip 'run' since we already printed it
+while [ $i -lt ${#DOCKER_ARGS[@]} ]; do
+    arg="${DOCKER_ARGS[$i]}"
+
+    # Check if this looks like a flag (starts with -)
+    if [[ "$arg" =~ ^- ]]; then
+        # Check if next argument exists and doesn't start with -
+        if [ $((i + 1)) -lt ${#DOCKER_ARGS[@]} ] && [[ ! "${DOCKER_ARGS[$((i + 1))]}" =~ ^- ]]; then
+            # Flag with value
+            echo " \\"
+            echo -n "      $arg ${DOCKER_ARGS[$((i + 1))]}"
+            i=$((i + 2))
+        else
+            # Flag without value
+            echo " \\"
+            echo -n "      $arg"
+            i=$((i + 1))
+        fi
+    else
+        # Not a flag, probably container name or command
+        echo " \\"
+        echo -n "      $arg"
+        i=$((i + 1))
+    fi
+done
+echo
+echo
+
+echo -e "Executing: $COMMAND ${REMAINING_ARGS[*]}"
+echo -e "Model: ${MODEL_NAME:-"(none - help mode)"}"
+echo -e "GPUs: $GPUS"
+echo -e "\033[0m"
+exec docker "${DOCKER_ARGS[@]}"
