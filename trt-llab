@@ -16,13 +16,13 @@ print_usage() {
 HELP_REQUESTED=false
 FILTERED_ARGS=()
 
-for arg in "$@"; do
-    case "$arg" in
+while [[ "$#" -gt 0 ]]; do
+    case $1 in
         --help)
             HELP_REQUESTED=true
             ;;
         --list-built-engines)
-            list_available_tags 
+            list_available_tags "$2"
             exit 1
             ;;
         --list-available-models)

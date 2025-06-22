@@ -33,16 +33,23 @@ list_available_models() {
 }
 
 list_available_tags() {
+    scoped_model="$1"
+
     # Show available tags if engines exist
     local engines_dir="./engines"
     [ -d "/engines" ] && engines_dir="/engines"
 
     if [ -d "$engines_dir" ]; then
+
         echo "Available engine tags:"
         local found_engines=false
         for model_dir in "$engines_dir"/*/; do
             if [ -d "$model_dir" ]; then
                 model_name=$(basename "$model_dir")
+                if [[ -n "$scoped_model" && "$model_name" != "$scoped_model" ]]; then
+                  continue
+                fi
+
                 echo "  Model: $model_name"
                 for tag_dir in "$model_dir"/*; do
                     if [ -d "$tag_dir" ]; then
@@ -53,7 +60,17 @@ list_available_tags() {
                 done
             fi
         done
-        [ "$found_engines" = false ] && echo "  No engine tags found"
+        if [[ "$found_engines" = false ]]; then
+          if [[ -n "$scoped_model" ]]; then
+            echo
+            echo -e "\e[33m  No engine tags found for model named '$scoped_model'."
+            echo -e "  Are you sure you have built any engines for that model?\e[0m"
+            echo
+            list_available_models
+          else
+            echo "  No engine tags found"
+          fi
+        fi
     fi
 }
 
