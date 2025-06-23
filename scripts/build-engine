@@ -159,9 +159,10 @@ show_build_metadata() {
 }
 
 build_model() {
-    mapfile -t quantize_base_args < <(jq -r '.quantize | to_entries[] | "--\(.key) \(.value)"' "$MODEL_CONFIG_FILE")
-    mapfile -t convert_checkpoint_base_args < <(jq -r '.convert_checkpoint | to_entries[] | "--\(.key) \(.value)"' "$MODEL_CONFIG_FILE")
-    mapfile -t trtllm_base_args < <(jq -r '.trtllm_build | to_entries[] | "--\(.key) \(.value)"' "$MODEL_CONFIG_FILE")
+    mapfile -t quantize_base_args < <(jq -r '.quantize | to_entries[] | if (.value == "" or .value == null) then "--\(.key)" else "--\(.key) \(.value)" end' "$MODEL_CONFIG_FILE")
+    mapfile -t convert_checkpoint_base_args < <(jq -r '.convert_checkpoint | to_entries[] | if (.value == "" or .value == null) then "--\(.key)" else "--\(.key) \(.value)" end' "$MODEL_CONFIG_FILE")
+    mapfile -t trtllm_base_args < <(jq -r '.trtllm_build | to_entries[] | if (.value == "" or .value == null) then "--\(.key)" else "--\(.key) \(.value)" end' "$MODEL_CONFIG_FILE")
+
     local checkpoint_dir=""
 
     if [[ ${#QUANTIZE_OVERRIDES[@]} -gt 0 || -n "${quantize_base_args[*]}" ]]; then
