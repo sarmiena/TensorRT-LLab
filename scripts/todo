@@ -1,6 +1,0 @@
-1. Allow the ability to see build status (failed or succeded) for a tag
-2. DRY trtllm-serve for --tag and --show-config of tags or whatever
-3. have trtllm-serve actually use the config to populate key arguments
-4. Create readme
-Can do 3 now since we are saving build-config correctly
-Try doing nemotron for fun

@@ -20,6 +20,7 @@ while [[ "$#" -gt 0 ]]; do
     case $1 in
         --help)
             HELP_REQUESTED=true
+            shift
             ;;
         --list-built-engines)
             list_available_tags "$2"
@@ -30,7 +31,8 @@ while [[ "$#" -gt 0 ]]; do
             exit 1
             ;;
         *)
-            FILTERED_ARGS+=("$arg")
+            FILTERED_ARGS+=("$1")
+            shift
             ;;
     esac
 done
