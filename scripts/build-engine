@@ -391,10 +391,16 @@ save_build_command() {
   "model": "$MODEL",
   "tag": "$TAG",
   "commands": {
+    "convert_checkpoint": "$COMPOSED_CONVERT_CHECKPOINT_COMMAND",
     "quantize": "$COMPOSED_QUANTIZE_COMMAND",
     "trtllm_build": "$COMPOSED_TRTLLM_COMMAND"
   },
   "applied_arguments": {
+    "convert_checkpoint": {
+$(for key in "${!COMPOSED_CONVERT_CHECKPOINT_ARGS_MAP[@]}"; do
+    echo "      \"$key\": \"${COMPOSED_CONVERT_CHECKPOINT_ARGS_MAP[$key]}\","
+done | sed '$s/,$//')
+    },
     "quantize": {
 $(for key in "${!COMPOSED_QUANTIZE_ARGS_MAP[@]}"; do
     echo "      \"$key\": \"${COMPOSED_QUANTIZE_ARGS_MAP[$key]}\","
@@ -407,6 +413,11 @@ done | sed '$s/,$//')
     }
   },
   "overrides": {
+    "convert_checkpoint": {
+$(for key in "${!CONVERT_CHECKPOINT_OVERRIDES[@]}"; do
+    echo "      \"$key\": \"${CONVERT_CHECKPOINT_OVERRIDES[$key]}\","
+done | sed '$s/,$//')
+    },
     "quantize": {
 $(for key in "${!QUANTIZE_OVERRIDES[@]}"; do
     echo "      \"$key\": \"${QUANTIZE_OVERRIDES[$key]}\","
@@ -454,6 +465,19 @@ generate_serve_args() {
                 # Only add if not already present from trtllm args (trtllm takes precedence)
                 if [[ -z "${DEFAULT_SERVE_ARGS[$key]:-}" ]]; then
                     DEFAULT_SERVE_ARGS["$key"]="${COMPOSED_QUANTIZE_ARGS_MAP[$key]}"
+                fi
+                break
+            fi
+        done
+    done
+    
+    # Check COMPOSED_CONVERT_CHECKPOINT_ARGS_MAP for applicable serve args
+    for key in "${!COMPOSED_CONVERT_CHECKPOINT_ARGS_MAP[@]}"; do
+        for allowed_arg in "${TRTLLM_SERVE_ARGS[@]}"; do
+            if [[ "$key" == "$allowed_arg" ]]; then
+                # Only add if not already present from trtllm args (trtllm takes precedence)
+                if [[ -z "${DEFAULT_SERVE_ARGS[$key]:-}" ]]; then
+                    DEFAULT_SERVE_ARGS["$key"]="${COMPOSED_CONVERT_CHECKPOINT_ARGS_MAP[$key]}"
                 fi
                 break
             fi
