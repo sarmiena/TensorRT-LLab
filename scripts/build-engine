@@ -16,6 +16,7 @@ declare -A COMPOSED_QUANTIZE_ARGS_MAP
 
 LIST_TAGS=false
 SHOW_BUILD_COMMAND=""
+SKIP_QUANTIZE=false
 
 print_usage() {
     show_build_engine_help
@@ -152,17 +153,30 @@ show_build_metadata() {
 build_model() {
     mapfile -t quantize_base_args < <(jq -r '.quantize | to_entries[] | "--\(.key) \(.value)"' "$MODEL_CONFIG_FILE")
     mapfile -t trtllm_base_args < <(jq -r '.trtllm_build | to_entries[] | "--\(.key) \(.value)"' "$MODEL_CONFIG_FILE")
+    local checkpoint_dir=""
 
-    quantize_base_args+=("--model_dir /model_weights/$MODEL")
-    trtllm_base_args+=("--output_dir $MODEL_OUTPUT_DIR" "--checkpoint_dir /ckpt")
-    build_quantize_cmd "${quantize_base_args[@]}"
+    if [[ ${#QUANTIZE_OVERRIDES[@]} -gt 0 || -n "${quantize_base_args[*]}" ]]; then
+      quantize_base_args+=("--model_dir /model_weights/$MODEL")
+
+      build_quantize_cmd "${quantize_base_args[@]}"
+      checkpoint_dir="/ckpt"
+      echo -e "\e[32mRunning: $COMPOSED_QUANTIZE_COMMAND\e[0m"
+      eval "$COMPOSED_QUANTIZE_COMMAND"
+    else
+      echo -e "\e[33mSkipping quantize because no arguments given in config file or explicitly via --quantize-* \e[0m"
+    fi
+
+    if [[ -z "$checkpoint_dir" ]]; then
+      # as of now if we aren't quantizing, we want to just point directly at the model directory itself
+      # we do this when we are using an already optimized tensorrt_llm model and don't need to quantize further
+      checkpoint_dir="/model_weights/$MODEL"
+    fi
+
+    trtllm_base_args+=("--output_dir $MODEL_OUTPUT_DIR" "--checkpoint_dir $checkpoint_dir")
     build_trtllm_cmd "${trtllm_base_args[@]}"
 
 
-    echo "Running: $COMPOSED_QUANTIZE_COMMAND"
-    eval "$COMPOSED_QUANTIZE_COMMAND"
-
-    echo "Running: $COMPOSED_TRTLLM_COMMAND"
+    echo "\e[32mRunning: $COMPOSED_TRTLLM_COMMAND\e[0m"
     eval "$COMPOSED_TRTLLM_COMMAND"
 
     save_build_command
