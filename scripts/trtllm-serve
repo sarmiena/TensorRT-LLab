@@ -1,42 +1,27 @@
 #!/bin/bash
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/help/common.help"
+source "$SCRIPT_DIR/help/trtllm-serve.help"
 TAG=""
 
 show_help() {
-    echo "TensorRT-LLM Model Serving"
-    echo
-    echo "Usage: $0 --tag <tag-name> [--config <config-name>]"
-    echo "       $0 --list-tags"
-    echo "       $0 --tag <tag-name> --list-serve-configs"
-    echo "       $0 --tag <tag-name> --show-serve-config <config-name>"
-    echo "       $0 --tag <tag-name> --edit"
-    echo
-    echo "Description:"
-    echo "  Serve TensorRT-LLM models that have been built with build-engine."
-    echo "  Models are served with configurations based on their build parameters."
-    echo
-    echo "Arguments:"
-    echo "  --tag <tag-name>                Tag of the built model to serve"
-    echo "  --config <config-name>          Serving configuration to use (default: 'default')"
-    echo "  --list-tags                     List all available model tags"
-    echo "  --list-serve-configs            List serving configurations for specified tag"
-    echo "  --show-serve-config <name>      Show details of a serving configuration"
-    echo "  --edit                          Edit serving configurations"
-    echo
-    echo "Examples:"
-    echo "  # Serve with default configuration"
-    echo "  $0 --tag default"
-    echo
-    echo "  # Serve with custom configuration"
-    echo "  $0 --tag fp8-optimized --config my_custom_args"
-    echo
-    echo "  # List available tags"
-    echo "  $0 --list-tags"
-    echo
-    echo "  # Show serving configurations for a tag"
-    echo "  $0 --tag default --list-serve-configs"
-    echo
-    echo "The server will start on localhost:8000 by default."
+    show_trtllm_serve_help
 }
+
+TEMP_ARGS=()
+while [[ $# -gt 0 ]]; do
+    case $1 in
+        --tag)
+            TAG="$2"
+            shift 2  # Skip both --tag and its value
+            ;;
+        *)
+            TEMP_ARGS+=("$1")  # Need parentheses for array append
+            shift
+            ;;
+    esac
+done
 
 # Parse arguments
 while [[ "$#" -gt 0 ]]; do
@@ -44,10 +29,6 @@ while [[ "$#" -gt 0 ]]; do
         --help)
             show_help
 						exit 0
-            ;;
-        --tag)
-            TAG="$2"
-            shift 2
             ;;
 	      --config)
             SERVE_CONFIG="$2"
@@ -68,8 +49,12 @@ while [[ "$#" -gt 0 ]]; do
             ;;
 	      --list-serve-configs)
             if [ -z "$TAG" ]; then
-                echo "Error: --tag is required with --list-serve-configs"
-                exit 1
+                if [ -n "$2" ] && [[ "$2" != --* ]]; then
+                    TAG="$2"
+                    shift
+                else
+                    TAG="default"
+                fi
             fi
             ENGINE_PATH="/engines/$MODEL/$TAG"
             SERVE_ARGS_FILE="$ENGINE_PATH/serve-args.json"
@@ -83,8 +68,12 @@ while [[ "$#" -gt 0 ]]; do
             ;;
         --show-serve-config)
             if [ -z "$TAG" ]; then
-                echo "Error: --tag is required with --show-serve-config"
-                exit 1
+                if [ -n "$2" ] && [[ "$2" != --* ]]; then
+                    TAG="$2"
+                    shift
+                else
+                    TAG="default"
+                fi
             fi
             SHOW_CONFIG_NAME="$2"
             shift 2
@@ -250,7 +239,7 @@ echo "Engine path: $ENGINE_PATH"
 # Set environment variables
 export KV_CACHE_FREE_GPU_MEM_FRACTION=0.9
 export ENGINE_DIR="$ENGINE_PATH"
-export TOKENIZER_DIR=/model
+export TOKENIZER_DIR=/models/$MODEL
 
 # Build and execute the serve command
 build_serve_command

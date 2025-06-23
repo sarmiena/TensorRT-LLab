@@ -2,13 +2,19 @@
 
 # Get the directory of the script
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/help/common.help"
+source "$SCRIPT_DIR/help/build-engine.help"
+source "$SCRIPT_DIR/model-script-selector"
 
 # Parse command line arguments
 TAG=""
+
 declare -A QUANTIZE_OVERRIDES
+declare -A CONVERT_CHECKPOINT_OVERRIDES
 declare -A TRTLLM_OVERRIDES
 
 declare -A COMPOSED_TRTLLM_ARGS_MAP
+declare -A COMPOSED_CONVERT_CHECKPOINT_ARGS_MAP
 declare -A COMPOSED_QUANTIZE_ARGS_MAP
 
 
@@ -16,48 +22,7 @@ LIST_TAGS=false
 SHOW_BUILD_COMMAND=""
 
 print_usage() {
-      echo
-      echo "Usage:"
-      echo "  $0 --tag <tag> [--quantize-<arg> <value>] [--trtllm-build-<arg> <value>]"
-      echo "  $0 --list-tags"
-      echo "  $0 --show-build-metadata <tag>"
-      echo "  $0 --delete-tag <tag>"
-      echo "  $0 --help <tag>"
-      echo
-      echo "Usage:"
-      echo "  $0 --tag <tag> [--quantize-<arg> <value>] [--trtllm-build-<arg> <value>]"
-      echo "  $0 --list-tags"
-      echo "  $0 --show-build-metadata <tag>"
-      echo "  $0 --delete-tag <tag>"
-      echo "  $0 --help"
-      echo
-      echo "Description:"
-      echo "  Build TensorRT-LLM engines with different quantization settings and configurations."
-      echo "  Each build is tagged for easy management and comparison."
-      echo
-      echo "Arguments:"
-      echo "  --tag <tag>                     Name/tag for this build configuration"
-      echo "  --quantize-<arg> <value>        Override quantization arguments"
-      echo "  --trtllm-build-<arg> <value>    Override TensorRT build arguments"
-      echo "  --list-tags                     Show all available tags for current model"
-      echo "  --show-build-metadata <tag>     Show build details for specified tag"
-      echo "  --delete-tag <tag>              Delete specified tag"
-			echo
-      echo "Examples:"
-      echo "  # Build with custom quantization"
-      echo "  $0 --tag int4-awq --quantize-qformat int4_awq --quantize-kv_cache_dtype int8"
-      echo
-      echo "  # Build with custom TensorRT settings"
-      echo "  $0 --tag high-throughput --trtllm-build-max_batch_size 1024 --trtllm-build-max_num_tokens 32768"
-      echo
-      echo "  # Build with tensor parallelism"
-      echo "  $0 --tag tp2-optimized --trtllm-build-tp_size 2"
-      echo
-      echo "  # List available tags"
-      echo "  $0 --list-tags"
-      echo
-      echo "  # Show build details"
-      echo "  $0 --show-build-metadata default"
+    show_build_engine_help
 }
 
 while [[ $# -gt 0 ]]; do
@@ -90,6 +55,11 @@ while [[ $# -gt 0 ]]; do
         --trtllm-build-*)
             ARG_NAME="${1#--trtllm-build-}"
             TRTLLM_OVERRIDES["--$ARG_NAME"]="$2"
+            shift 2
+            ;;
+        --convert-checkpoint-*)
+            ARG_NAME="${1#--convert-checkpoint-}"
+            CONVERT_CHECKPOINT_OVERRIDES["--$ARG_NAME"]="$2"
             shift 2
             ;;
         *)
@@ -178,7 +148,7 @@ show_build_metadata() {
     local build_command_file="/engines/$model/$tag/build-command.json"
     
     if [ ! -f "$build_command_file" ]; then
-        echo "Error: Build command file not found: $build_command_file"
+        echo -e "\033[32mError: Build command file not found: $build_command_file\033[0m"
         exit 1
     fi
     
@@ -190,17 +160,36 @@ show_build_metadata() {
 
 build_model() {
     mapfile -t quantize_base_args < <(jq -r '.quantize | to_entries[] | "--\(.key) \(.value)"' "$MODEL_CONFIG_FILE")
+    mapfile -t convert_checkpoint_base_args < <(jq -r '.convert_checkpoint | to_entries[] | "--\(.key) \(.value)"' "$MODEL_CONFIG_FILE")
     mapfile -t trtllm_base_args < <(jq -r '.trtllm_build | to_entries[] | "--\(.key) \(.value)"' "$MODEL_CONFIG_FILE")
+    local checkpoint_dir=""
 
-    trtllm_base_args+=("--output_dir $MODEL_OUTPUT_DIR")
-    build_quantize_cmd "${quantize_base_args[@]}"
+    if [[ ${#QUANTIZE_OVERRIDES[@]} -gt 0 || -n "${quantize_base_args[*]}" ]]; then
+      checkpoint_dir="/ckpt"
+      quantize_base_args+=("--model_dir /model_weights/$MODEL" "--output_dir $checkpoint_dir")
+
+      build_quantize_cmd "${quantize_base_args[@]}"
+      echo -e "\033[32mRunning: $COMPOSED_QUANTIZE_COMMAND\033[0m"
+      eval "$COMPOSED_QUANTIZE_COMMAND"
+    elif [[ ${#CONVERT_CHECKPOINT_OVERRIDES[@]} -gt 0 || -n "${convert_checkpoint_base_args[*]}" ]]; then
+      checkpoint_dir="/ckpt"
+      convert_checkpoint_base_args+=("--model_dir /model_weights/$MODEL" "--output_dir $checkpoint_dir")
+
+      build_convert_checkpoint_cmd "${convert_checkpoint_base_args[@]}"
+      echo -e "\033[32mRunning: $COMPOSED_CONVERT_CHECKPOINT_COMMAND\033[0m"
+      eval "$COMPOSED_CONVERT_CHECKPOINT_COMMAND"
+    fi
+
+    if [[ -z "$checkpoint_dir" ]]; then
+      echo -e "\033[31mError: No checkpoint directory detected via --output_dir"
+      exit 1
+    fi
+
+    trtllm_base_args+=("--output_dir $MODEL_OUTPUT_DIR" "--checkpoint_dir $checkpoint_dir")
     build_trtllm_cmd "${trtllm_base_args[@]}"
 
 
-    echo "Running: $COMPOSED_QUANTIZE_COMMAND"
-    eval "$COMPOSED_QUANTIZE_COMMAND"
-
-    echo "Running: $COMPOSED_TRTLLM_COMMAND"
+    echo -e "\033[32mRunning: $COMPOSED_TRTLLM_COMMAND\033[0m"
     eval "$COMPOSED_TRTLLM_COMMAND"
 
     save_build_command
@@ -297,6 +286,58 @@ build_quantize_cmd() {
     done
 
     COMPOSED_QUANTIZE_COMMAND="$cmd"
+}
+#
+# Function to build convert_checkpoint.py command with overrides
+build_convert_checkpoint_cmd() {
+    local base_args=("$@")
+
+    # Run the model selector to get user choice
+    if ! run_model_selector; then
+        echo "Model selection cancelled or failed"
+        return 1
+    fi
+
+    # Determine model type from the selected path
+    local model_type="core"
+    [[ "$SELECTED_MODEL_PATH" == *"/contrib/"* ]] && model_type="contrib"
+
+    # Build the command with the selected model
+    local cmd="python3 /app/tensorrt_llm/examples/models/$model_type/$SELECTED_MODEL/convert_checkpoint.py"
+
+    # First, parse the base args from JSON config (format: "--key value")
+    for ((i=0; i < ${#base_args[@]}; i++)); do
+        arg="${base_args[$i]}"
+        
+        # Split "--key value" into key and value
+        if [[ "$arg" =~ ^(--[^[:space:]]+)[[:space:]]+(.+)$ ]]; then
+            key="${BASH_REMATCH[1]}"
+            val="${BASH_REMATCH[2]}"
+        elif [[ "$arg" =~ ^(--[^[:space:]]+)$ ]]; then
+            key="${BASH_REMATCH[1]}"
+            val=""
+        else
+            continue  # Skip malformed args
+        fi
+
+        COMPOSED_CONVERT_CHECKPOINT_ARGS_MAP["$key"]="$val"
+    done
+
+    # Apply overrides (these are already in correct key=value format)
+    for key in "${!CONVERT_CHECKPOINT_OVERRIDES[@]}"; do
+        COMPOSED_CONVERT_CHECKPOINT_ARGS_MAP["$key"]="${CONVERT_CHECKPOINT_OVERRIDES[$key]}"
+    done
+
+    # Rebuild command
+    for key in "${!COMPOSED_CONVERT_CHECKPOINT_ARGS_MAP[@]}"; do
+        if [[ -n "${COMPOSED_CONVERT_CHECKPOINT_ARGS_MAP[$key]}" ]]; then
+            cmd+=" $key ${COMPOSED_CONVERT_CHECKPOINT_ARGS_MAP[$key]}"
+        else
+            cmd+=" $key"
+        fi
+    done
+
+    COMPOSED_CONVERT_CHECKPOINT_COMMAND="$cmd"
 }
 
 # Function to build trtllm-build command with overrides

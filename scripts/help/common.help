@@ -1,0 +1,79 @@
+#!/bin/bash
+# Common help functions shared across all scripts
+
+list_available_models() {
+    echo "Available models:"
+    if [ -d "./model_weights" ] || [ -d "/model_weights" ]; then
+        local model_weights_dir="./model_weights"
+        [ -d "/model_weights" ] && model_weights_dir="/model_weights"
+
+        local found_models=false
+        for model_dir in "$model_weights_dir"/*/; do
+            if [ -d "$model_dir" ]; then
+                model_name=$(basename "$model_dir")
+                # Skip .gitkeep and other non-model files
+                if [ "$model_name" != ".gitkeep" ] && [ -d "$model_dir" ]; then
+                    echo "  - $model_name"
+                    found_models=true
+                fi
+            fi
+        done
+
+        if [ "$found_models" = false ]; then
+            echo "  No models found in $model_weights_dir/"
+            echo
+            echo "To add a model, download it to $model_weights_dir/<model-name>/"
+            echo "Example:"
+            echo "  git clone https://huggingface.co/meta-llama/Llama-3.1-8B-Instruct model_weights/meta-llama_Llama-3.1-8B-Instruct"
+        fi
+    else
+        echo "  model_weights directory not found"
+        echo "  Please create ./model_weights/ and add your models there"
+    fi
+}
+
+list_available_tags() {
+    scoped_model="$1"
+
+    # Show available tags if engines exist
+    local engines_dir="./engines"
+    [ -d "/engines" ] && engines_dir="/engines"
+
+    if [ -d "$engines_dir" ]; then
+
+        echo "Available engine tags:"
+        local found_engines=false
+        for model_dir in "$engines_dir"/*/; do
+            if [ -d "$model_dir" ]; then
+                model_name=$(basename "$model_dir")
+                if [[ -n "$scoped_model" && "$model_name" != "$scoped_model" ]]; then
+                  continue
+                fi
+
+                echo "  Model: $model_name"
+                for tag_dir in "$model_dir"/*; do
+                    if [ -d "$tag_dir" ]; then
+                        tag=$(basename "$tag_dir")
+                        echo "    - $tag"
+                        found_engines=true
+                    fi
+                done
+            fi
+        done
+        if [[ "$found_engines" = false ]]; then
+          if [[ -n "$scoped_model" ]]; then
+            echo
+            echo -e "\e[33m  No engine tags found for model named '$scoped_model'."
+            echo -e "  Are you sure you have built any engines for that model?\e[0m"
+            echo
+            list_available_models
+          else
+            echo "  No engine tags found"
+          fi
+        fi
+    fi
+}
+
+# Export functions for use by other scripts
+export -f list_available_models
+export -f list_available_tags

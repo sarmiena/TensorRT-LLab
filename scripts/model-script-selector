@@ -1,0 +1,335 @@
+#!/bin/bash
+
+# Get terminal dimensions and calculate items per page
+get_terminal_size() {
+    local height=$(tput lines 2>/dev/null || echo 24)
+    local width=$(tput cols 2>/dev/null || echo 80)
+    
+    # Reserve space for header (4 lines) and footer (3 lines) + 3 buffer
+    items_per_page=$((height - 10))
+    [[ $items_per_page -lt 5 ]] && items_per_page=5
+    [[ $items_per_page -gt 50 ]] && items_per_page=50  # Reasonable cap
+}
+
+show_page() {
+    clear
+    local start_idx=$((current_page * items_per_page))
+    local end_idx=$((start_idx + items_per_page - 1))
+    [[ $end_idx -ge ${#filtered_model_names[@]} ]] && end_idx=$((${#filtered_model_names[@]} - 1))
+    
+    # Header
+    echo "═══════════════════════════════════════════════════════════════"
+    echo "  Model Selection - Page $((current_page + 1)) of $total_pages"
+    echo "  * means 'core' model in TensorRT-LLM repo"
+    [[ -n "$current_filter" ]] && echo "  Filter: '$current_filter' (${#filtered_model_names[@]} matches)" || echo "  All models (${#filtered_model_names[@]} total)"
+    echo "═══════════════════════════════════════════════════════════════"
+    
+    # Model list with numbers
+    local display_num=1
+    for i in $(seq $start_idx $end_idx); do
+        if [[ $i -lt ${#filtered_model_names[@]} ]]; then
+            local model_name="${filtered_model_names[i]}"
+            local display_name=$(get_display_name "$model_name")
+            printf "%2d. %s\n" $display_num "$display_name"
+            ((display_num++))
+        fi
+    done
+    
+    # Footer with controls
+    echo
+    echo "───────────────────────────────────────────────────────────────"
+    if [[ $total_pages -gt 1 ]]; then
+        echo "Navigation: [←/→] or [PgUp/PgDn] pages | [number + Enter] select | [/] filter | [q] quit"
+    else
+        echo "Controls: [number + Enter] select | [/] filter | [q] quit"
+    fi
+}
+
+show_confirmation() {
+    local model_name="$1"
+    local model_path="$2"
+    local model_type="core"
+    [[ "$model_path" == *"/contrib/"* ]] && model_type="contrib"
+    
+    clear
+    echo "═══════════════════════════════════════════════════════════════"
+    echo "  Confirm Model Selection"
+    echo "═══════════════════════════════════════════════════════════════"
+    echo
+    echo "Selected Model: $(get_display_name "$model_name")"
+    echo "Path: $model_path"
+    echo "GitHub: https://github.com/NVIDIA/TensorRT-LLM/tree/main/examples/models/$model_type/$model_name"
+    echo
+    echo "───────────────────────────────────────────────────────────────"
+    echo -n "Confirm selection? [Y/n]: "
+}
+
+get_display_name() {
+    local model_name="$1"
+    local model_path="${models[$model_name]}"
+    
+    if [[ "$model_path" == *"/core/"* ]]; then
+        echo "$model_name *"
+    else
+        echo "$model_name"
+    fi
+}
+
+filter_models() {
+    filtered_model_names=()
+    for model in "${all_model_names[@]}"; do
+        if [[ "$model" == *"$current_filter"* ]]; then
+            filtered_model_names+=("$model")
+        fi
+    done
+    current_page=0
+    calculate_pages
+}
+
+calculate_pages() {
+    if [[ ${#filtered_model_names[@]} -eq 0 ]]; then
+        total_pages=1
+    else
+        total_pages=$(( (${#filtered_model_names[@]} + items_per_page - 1) / items_per_page ))
+    fi
+}
+
+get_autocomplete_suggestions() {
+    local input="$1"
+    local suggestions=()
+    
+    for model in "${all_model_names[@]}"; do
+        if [[ "$model" == "$input"* ]]; then
+            suggestions+=("$model")
+        fi
+    done
+    
+    echo "${suggestions[@]}"
+}
+
+handle_number_input() {
+    local first_digit="$1"
+    echo
+    echo -n "Enter selection number: $first_digit"
+    
+    local input="$first_digit"
+    while true; do
+        read -rsn1 char
+        case "$char" in
+            $'\x7f'|$'\x08')  # Backspace
+                if [[ ${#input} -gt 0 ]]; then
+                    input="${input%?}"
+                    echo -ne "\b \b"
+                fi
+                ;;
+            '')  # Enter
+                if [[ -n "$input" && "$input" =~ ^[0-9]+$ ]]; then
+                    local num=$((input))
+                    local start_idx=$((current_page * items_per_page))
+                    local actual_idx=$((start_idx + num - 1))
+                    
+                    # Bounds checking
+                    if [[ $num -gt 0 && $actual_idx -lt ${#filtered_model_names[@]} ]]; then
+                        local selected_model="${filtered_model_names[$actual_idx]}"
+                        
+                        # Make sure we got a valid model name
+                        if [[ -n "$selected_model" && -n "${models[$selected_model]}" ]]; then
+                            local selected_path="${models[$selected_model]}"
+                            
+                            show_confirmation "$selected_model" "$selected_path"
+                            
+                            read -rsn1 confirm
+                            case "$confirm" in
+                                Y|y|'')  # Enter defaults to yes
+                                    clear
+                                    echo "Selected Model: $selected_model"
+                                    echo "Path: $selected_path"
+                                    
+                                    # Export for use in calling script
+                                    export SELECTED_MODEL="$selected_model"
+                                    export SELECTED_MODEL_PATH="$selected_path"
+                                    return 0
+                                    ;;
+                                *)
+                                    # Go back to selection
+                                    return 1
+                                    ;;
+                            esac
+                        else
+                            echo
+                            echo "Invalid selection. Press any key to continue..."
+                            read -rsn1
+                            return 1
+                        fi
+                    else
+                        echo
+                        local max_items=$((${#filtered_model_names[@]} - start_idx))
+                        [[ $max_items -gt $items_per_page ]] && max_items=$items_per_page
+                        echo "Number out of range (1-$max_items). Press any key to continue..."
+                        read -rsn1
+                        return 1
+                    fi
+                else
+                    return 1
+                fi
+                ;;
+            $'\x1b')  # Escape
+                return 1
+                ;;
+            [0-9])
+                input="$input$char"
+                echo -n "$char"
+                ;;
+        esac
+    done
+}
+
+handle_filter_input() {
+    echo
+    echo "Filter models (type to search, TAB for autocomplete, Enter to apply):"
+    echo -n "Filter: "
+    
+    local input=""
+    local cursor_pos=0
+    
+    while true; do
+        read -rsn1 char
+        case "$char" in
+            $'\x7f'|$'\x08')  # Backspace
+                if [[ $cursor_pos -gt 0 ]]; then
+                    input="${input%?}"
+                    ((cursor_pos--))
+                    echo -ne "\b \b"
+                fi
+                ;;
+            $'\t')  # Tab for autocomplete
+                local suggestions=($(get_autocomplete_suggestions "$input"))
+                if [[ ${#suggestions[@]} -eq 1 ]]; then
+                    # Complete with the single suggestion
+                    local completion="${suggestions[0]}"
+                    local to_add="${completion:${#input}}"
+                    input="$completion"
+                    cursor_pos=${#input}
+                    echo -n "$to_add"
+                elif [[ ${#suggestions[@]} -gt 1 ]]; then
+                    # Show suggestions
+                    echo
+                    echo "Suggestions:"
+                    for suggestion in "${suggestions[@]:0:10}"; do  # Show max 10
+                        echo "  $suggestion"
+                    done
+                    [[ ${#suggestions[@]} -gt 10 ]] && echo "  ... and $((${#suggestions[@]} - 10)) more"
+                    echo -n "Filter: $input"
+                fi
+                ;;
+            '')  # Enter
+                current_filter="$input"
+                filter_models
+                return
+                ;;
+            $'\x1b')  # Escape
+                current_filter=""
+                filter_models
+                return
+                ;;
+            *)
+                if [[ -n "$char" && "$char" != $'\x00' ]]; then
+                    input="$input$char"
+                    ((cursor_pos++))
+                    echo -n "$char"
+                fi
+                ;;
+        esac
+    done
+}
+
+# Main function to run the model selector
+run_model_selector() {
+    # Initialize
+    get_terminal_size
+
+    # Declare associative array for models
+    declare -A models
+
+    # Populate models from both directories
+    if [[ -d "./examples/models/core" ]]; then
+        for model_dir in ./examples/models/core/*/; do
+            if [[ -d "$model_dir" ]]; then
+                model_name=$(basename "$model_dir")
+                models["$model_name"]="./examples/models/core/$model_name"
+            fi
+        done
+    fi
+
+    if [[ -d "./examples/models/contrib" ]]; then
+        for model_dir in ./examples/models/contrib/*/; do
+            if [[ -d "$model_dir" ]]; then
+                model_name=$(basename "$model_dir")
+                models["$model_name"]="./examples/models/contrib/$model_name"
+            fi
+        done
+    fi
+
+    # Check if we have any models
+    if [[ ${#models[@]} -eq 0 ]]; then
+        echo "No models found in ./examples/models/core/ or ./examples/models/contrib/"
+        return 1
+    fi
+
+    # Initialize variables
+    all_model_names=($(printf '%s\n' "${!models[@]}" | sort))
+    filtered_model_names=("${all_model_names[@]}")
+    current_page=0
+    current_filter=""
+    calculate_pages
+
+    # Main loop
+    while true; do
+        show_page
+        
+        read -rsn1 key
+        
+        case "$key" in
+            $'\x1b')  # ESC sequence for arrow keys and page up/down
+                read -rsn1 key2
+                case "$key2" in
+                    '[')
+                        read -rsn1 key3
+                        case "$key3" in
+                            'C'|'D')  # Right/Left arrow
+                                if [[ "$key3" == 'C' && $current_page -lt $((total_pages - 1)) ]]; then
+                                    ((current_page++))
+                                elif [[ "$key3" == 'D' && $current_page -gt 0 ]]; then
+                                    ((current_page--))
+                                fi
+                                ;;
+                            '5')  # Page Up
+                                read -rsn1 key4  # Read the '~'
+                                if [[ "$key4" == "~" && $current_page -gt 0 ]]; then
+                                    ((current_page--))
+                                fi
+                                ;;
+                            '6')  # Page Down
+                                read -rsn1 key4  # Read the '~'
+                                if [[ "$key4" == "~" && $current_page -lt $((total_pages - 1)) ]]; then
+                                    ((current_page++))
+                                fi
+                                ;;
+                        esac
+                        ;;
+                esac
+                ;;
+            '/')  # Filter
+                handle_filter_input
+                ;;
+            q|Q)
+                echo "Cancelled..."
+                return 1
+                ;;
+            [0-9])  # Number selection
+                handle_number_input "$key"
+                return 0  # Exit the selector after successful selection
+                ;;
+        esac
+    done
+}

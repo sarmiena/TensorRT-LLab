@@ -1,0 +1,70 @@
+#!/bin/bash
+# Help content for build-engine command
+
+show_build_engine_help() {
+    local show_header=${1:-true}
+    
+    if [ "$show_header" = "true" ]; then
+        echo "BUILD-ENGINE COMMAND"
+        echo "===================="
+        echo
+    fi
+    
+    echo "Build TensorRT-LLM engines with different quantization settings and configurations."
+    echo "Each build is tagged for easy management and comparison."
+    echo
+    echo "Usage:"
+    echo "  build-engine --tag <tag> [--quantize-<arg> <value>] [--trtllm-build-<arg> <value>]"
+    echo "  build-engine --list-tags"
+    echo "  build-engine --show-build-metadata <tag>"
+    echo "  build-engine --delete-tag <tag>"
+    echo
+    echo "Arguments:"
+    echo "  --tag <tag>                               Name/tag for this build configuration"
+    echo "  --quantize-<arg> <value>                  Pass arguments to quantize.py, if using it"
+    echo "  --convert-checkpoint-<arg> <value>        Pass arguments to convert_checkpoint.py, if using it"
+    echo "  --trtllm-build-<arg> <value>              Override TensorRT build arguments"
+    echo "  --list-tags                               Show all available tags for current model"
+    echo "  --show-build-metadata <tag>               Show build details for specified tag"
+    echo "  --delete-tag <tag>                        Delete specified tag"
+    echo
+    echo "Quantization Override Examples: (non comprehensive)"
+    echo "  --quantize-qformat int4_awq     Set quantization format to INT4 AWQ"
+    echo "  --quantize-kv_cache_dtype int8  Set KV cache data type to INT8"
+    echo "  --quantize-dtype bfloat16       Set model data type to bfloat16"
+    echo "  --quantize-calib_size 1024      Set calibration dataset size"
+    echo
+    echo "TensorRT Build Override Examples: (non comprehensive)"
+    echo "  --trtllm-build-max_batch_size 1024     Set maximum batch size"
+    echo "  --trtllm-build-max_num_tokens 32768    Set maximum number of tokens"
+    echo "  --trtllm-build-max_seq_len 32768       Set maximum sequence length"
+    echo "  --trtllm-build-tp_size 2               Enable tensor parallelism (2 GPUs)"
+    echo "  --trtllm-build-pp_size 2               Enable pipeline parallelism (2 stages)"
+    echo "  --trtllm-build-kv_cache_type paged     Set KV cache type"
+    echo "  --trtllm-build-use_fp8_context_fmha enable   Enable FP8 context FMHA"
+    echo
+    echo "Build Examples:"
+    echo "  # Basic build with default settings"
+    echo "  build-engine --tag default"
+    echo
+    echo "  # INT4 AWQ quantization build"
+    echo "  build-engine --tag int4-awq --quantize-qformat int4_awq --quantize-kv_cache_dtype int8"
+    echo
+    echo "  # High throughput build"
+    echo "  build-engine --tag high-throughput --trtllm-build-max_batch_size 1024 --trtllm-build-max_num_tokens 32768"
+    echo
+    echo "  # Tensor parallelism build (2 GPUs)"
+    echo "  build-engine --tag tp2-optimized --trtllm-build-tp_size 2"
+    echo
+    echo "  # Pipeline parallelism build"
+    echo "  build-engine --tag pp2-optimized --trtllm-build-pp_size 2"
+    echo
+    echo "Notes:"
+    echo "  - Each build creates a tagged configuration in /engines/<model>/<tag>/"
+    echo "  - Build metadata is saved to build-command.json for reproducibility"
+    echo "  - Serving arguments are auto-generated in serve-args.json"
+    echo "  - Model configuration files are in scripts/models/<model>.json"
+}
+
+# Export the function for use by other scripts
+export -f show_build_engine_help

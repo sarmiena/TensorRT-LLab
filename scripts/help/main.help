@@ -1,0 +1,60 @@
+#!/bin/bash
+# Main help content for trt-llab
+
+show_main_help() {
+    echo
+    echo -e "\e[33m==========================="
+    echo -e "TensorRT-LLM Lab (trt-llab)"
+    echo "==========================="
+    echo "Quantize, build, and manage multiple model variants with tagged configurations"
+    echo
+    echo "  $0 <command> --model <model-name> [--gpus <gpu-spec>] [--container <image>] [command-args...]"
+    echo
+    echo "ARGUMENTS"
+    echo "----------------"
+    echo "  --model <model-name>                (Required for build-engine and trtllm-serve) Name of model directory in ./model_weights"
+    echo "                                          Example: For model located in ./model_weights/meta-llama_Llama-3.1-8B-Instruct"
+    echo "                                                   use: --model meta-llama_Llama-3.1-8B-Instruct"
+    echo "  --gpus <gpu-spec>                   (Optional) GPU spec for Docker (default: 'all')"
+    echo "                                          Examples: 'all', 'device=0,1', 'device=0'"
+    echo "  --container <image>                 (Optional) Container image used for build-engine and trtllm-serve (default: 'tensorrt_llm/release')"
+    echo "  --list-built-engines [model-name]   Show all engines built and tagged using TensorRT-LLab. Optional [model-name] for specific model"
+    echo "  --list-available-models             Show all available models in ./model_weights"
+    echo "  --help                              This message"
+    echo
+    echo "COMMANDS"
+    echo "--------"
+    echo
+    echo "  build-engine                        Quantize models and build TensorRT engines"
+    echo "  trtllm-serve                        Serve built models for inference"
+    echo "  bash                                Open an interactive shell on the TensorRT-LLM container"
+    echo
+    echo "  Use --help for specific use for build-engine and trtllm-serve"
+    echo
+    echo "    e.g. ./trt-llab build-engine --help"
+    echo
+    echo "EXAMPLES"
+    echo "--------------------"
+    echo
+    echo "  # Build with tensor parallelism"
+    echo "  $0 build-engine --model meta-llama_Llama-3.1-8B-Instruct --tag tp2 --quantize-tp_size 2"
+    echo
+    echo "  # Serve a built model"
+    echo "  $0 trtllm-serve --model meta-llama_Llama-3.1-8B-Instruct --tag default"
+    echo
+    echo "  # List available configurations"
+    echo "  $0 build-engine --model meta-llama_Llama-3.1-8B-Instruct --list-tags"
+    echo
+    echo "  More: https://github.com/sarmiena/TensorRT-LLab"
+    echo
+    echo "PROJECT STRUCTURE"
+    echo "-----------------"
+    echo    "  ."
+    echo    "  ├── engines/              # Built TensorRT engines (organized by model/tag)"
+    echo    "  ├── model_weights/        # Downloaded HuggingFace models"
+    echo    "  ├── scripts/"
+    echo -e "  │   ├── models/          # Model configuration files\e[0m"
+    echo
+}
+
+export -f show_main_help

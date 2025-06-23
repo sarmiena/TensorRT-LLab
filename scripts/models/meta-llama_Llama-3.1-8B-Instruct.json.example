@@ -1,6 +1,5 @@
 {
   "quantize": {
-    "model_dir": "/model",
     "dtype": "bfloat16",
     "qformat": "fp8",
     "kv_cache_dtype": "fp8",
@@ -8,7 +7,6 @@
     "calib_size": "512"
   },
   "trtllm_build": {
-    "checkpoint_dir": "/ckpt",
     "remove_input_padding": "enable",
     "kv_cache_type": "paged",
     "max_batch_size": "512",

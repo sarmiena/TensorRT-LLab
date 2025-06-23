@@ -1,0 +1,109 @@
+#!/bin/bash
+# Help content for trtllm-serve command
+
+show_trtllm_serve_help() {
+    local show_header=${1:-true}
+    
+    if [ "$show_header" = "true" ]; then
+        echo "TRTLLM-SERVE COMMAND"
+        echo "===================="
+        echo
+    fi
+    
+    echo "Serve TensorRT-LLM models that have been built with build-engine."
+    echo "Models are served with configurations based on their build parameters."
+    echo
+    echo "Usage:"
+    echo "  trtllm-serve --tag <tag-name> [--config <config-name>]"
+    echo "  trtllm-serve --list-tags"
+    echo "  trtllm-serve --tag <tag-name> --list-serve-configs"
+    echo "  trtllm-serve --tag <tag-name> --show-serve-config <config-name>"
+    echo "  trtllm-serve --tag <tag-name> --edit"
+    echo
+    echo "Arguments:"
+    echo "  --tag <tag-name>                Tag of the built model to serve"
+    echo "  --config <config-name>          Serving configuration to use (default: 'default')"
+    echo "  --list-tags                     List all available model tags"
+    echo "  --list-serve-configs            List serving configurations for specified tag"
+    echo "  --show-serve-config <name>      Show details of a serving configuration"
+    echo "  --edit                          Edit serving configurations"
+    echo
+    echo "Serving Examples:"
+    echo "  # Serve with default configuration"
+    echo "  trtllm-serve --tag default"
+    echo
+    echo "  # Serve with custom configuration"
+    echo "  trtllm-serve --tag fp8-optimized --config my_custom_args"
+    echo
+    echo "  # Serve high-throughput build"
+    echo "  trtllm-serve --tag high-throughput"
+    echo
+    echo "  # Serve tensor parallel build"
+    echo "  trtllm-serve --tag tp2-optimized"
+    echo
+    echo "Configuration Management:"
+    echo "  # List available tags"
+    echo "  trtllm-serve --list-tags"
+    echo
+    echo "  # Show serving configurations for a tag"
+    echo "  trtllm-serve --tag default --list-serve-configs"
+    echo
+    echo "  # Show specific configuration details"
+    echo "  trtllm-serve --tag default --show-serve-config my_custom_args"
+    echo
+    echo "  # Edit serving configurations"
+    echo "  trtllm-serve --tag default --edit"
+    echo
+    echo "Supported Serving Arguments:"
+    echo "  --config_file                   TensorRT-LLM config file path"
+    echo "  --metadata_server_config_file   Metadata server config file"
+    echo "  --server_start_timeout          Server startup timeout"
+    echo "  --request_timeout               Request timeout"
+    echo "  --log_level                     Logging level"
+    echo "  --tokenizer                     Tokenizer path"
+    echo "  --host                          Server host (default: localhost)"
+    echo "  --port                          Server port (default: 8000)"
+    echo "  --backend                       Backend type"
+    echo "  --max_beam_width                Maximum beam width"
+    echo "  --max_batch_size                Maximum batch size"
+    echo "  --max_num_tokens                Maximum number of tokens"
+    echo "  --max_seq_len                   Maximum sequence length"
+    echo "  --tp_size                       Tensor parallelism size"
+    echo "  --pp_size                       Pipeline parallelism size"
+    echo "  --ep_size                       Expert parallelism size"
+    echo "  --cluster_size                  Cluster size"
+    echo "  --gpus_per_node                 GPUs per node"
+    echo "  --kv_cache_free_gpu_memory_fraction  KV cache memory fraction"
+    echo "  --num_postprocess_workers       Number of postprocess workers"
+    echo
+    echo -e "\033[32mConfiguration File Format:"
+    echo "  Serving configurations are stored in serve-args.json:"
+    echo "  {"
+    echo "    \"default\": {"
+    echo "      \"notes\": \"Default configuration from build\","
+    echo "      \"args\": {"
+    echo "        \"--max_batch_size\": \"512\","
+    echo "        \"--host\": \"0.0.0.0\","
+    echo "        \"--port\": \"8000\""
+    echo "      }"
+    echo "    },"
+    echo "    \"my_custom_args\": {"
+    echo "      \"notes\": \"Custom high-performance configuration\","
+    echo "      \"args\": {"
+    echo "        \"--max_batch_size\": \"1024\","
+    echo "        \"--host\": \"0.0.0.0\","
+    echo "        \"--port\": \"8001\""
+    echo "      }"
+    echo "    }"
+    echo -e "  }\033[0m"
+    echo
+    echo "Notes:"
+    echo "  - The server starts on localhost:8000 by default"
+    echo "  - Serve configurations are auto-generated from build parameters"
+    echo "  - Use --edit to customize serve parameters"
+    echo "  - Default configuration inherits build-time settings"
+    echo "  - Multiple configurations can be stored per tag"
+}
+
+# Export the function for use by other scripts
+export -f show_trtllm_serve_help
