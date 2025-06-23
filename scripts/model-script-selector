@@ -5,8 +5,8 @@ get_terminal_size() {
     local height=$(tput lines 2>/dev/null || echo 24)
     local width=$(tput cols 2>/dev/null || echo 80)
     
-    # Reserve space for header (4 lines) and footer (3 lines)
-    items_per_page=$((height - 7))
+    # Reserve space for header (4 lines) and footer (3 lines) + 3 buffer
+    items_per_page=$((height - 10))
     [[ $items_per_page -lt 5 ]] && items_per_page=5
     [[ $items_per_page -gt 50 ]] && items_per_page=50  # Reasonable cap
 }
@@ -20,6 +20,7 @@ show_page() {
     # Header
     echo "═══════════════════════════════════════════════════════════════"
     echo "  Model Selection - Page $((current_page + 1)) of $total_pages"
+    echo "  * means 'core' model in TensorRT-LLM repo"
     [[ -n "$current_filter" ]] && echo "  Filter: '$current_filter' (${#filtered_model_names[@]} matches)" || echo "  All models (${#filtered_model_names[@]} total)"
     echo "═══════════════════════════════════════════════════════════════"
     
@@ -68,7 +69,7 @@ get_display_name() {
     local model_path="${models[$model_name]}"
     
     if [[ "$model_path" == *"/core/"* ]]; then
-        echo "$model_name ⭐"
+        echo "$model_name *"
     else
         echo "$model_name"
     fi
