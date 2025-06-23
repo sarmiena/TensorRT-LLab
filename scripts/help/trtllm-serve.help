@@ -4,6 +4,7 @@
 show_trtllm_serve_help() {
     local show_header=${1:-true}
     
+    echo -e "\033[33m"
     if [ "$show_header" = "true" ]; then
         echo "TRTLLM-SERVE COMMAND"
         echo "===================="
@@ -14,15 +15,15 @@ show_trtllm_serve_help() {
     echo "Models are served with configurations based on their build parameters."
     echo
     echo "Usage:"
-    echo "  trtllm-serve --tag <tag-name> [--config <config-name>]"
     echo "  trtllm-serve --list-tags"
+    echo "  trtllm-serve --tag <tag-name> [--serve-config <config-name>]"
     echo "  trtllm-serve --tag <tag-name> --list-serve-configs"
     echo "  trtllm-serve --tag <tag-name> --show-serve-config <config-name>"
     echo "  trtllm-serve --tag <tag-name> --edit"
     echo
     echo "Arguments:"
     echo "  --tag <tag-name>                Tag of the built model to serve"
-    echo "  --config <config-name>          Serving configuration to use (default: 'default')"
+    echo "  --serve-config <config-name>    Serving configuration to use (default: 'default')"
     echo "  --list-tags                     List all available model tags"
     echo "  --list-serve-configs            List serving configurations for specified tag"
     echo "  --show-serve-config <name>      Show details of a serving configuration"
@@ -75,8 +76,8 @@ show_trtllm_serve_help() {
     echo "  --gpus_per_node                 GPUs per node"
     echo "  --kv_cache_free_gpu_memory_fraction  KV cache memory fraction"
     echo "  --num_postprocess_workers       Number of postprocess workers"
-    echo
-    echo -e "\033[32mConfiguration File Format:"
+    echo -e "\033[0m"
+    echo "[32mConfiguration File Format:"
     echo "  Serving configurations are stored in serve-args.json:"
     echo "  {"
     echo "    \"default\": {"
@@ -95,14 +96,7 @@ show_trtllm_serve_help() {
     echo "        \"--port\": \"8001\""
     echo "      }"
     echo "    }"
-    echo -e "  }\033[0m"
-    echo
-    echo "Notes:"
-    echo "  - The server starts on localhost:8000 by default"
-    echo "  - Serve configurations are auto-generated from build parameters"
-    echo "  - Use --edit to customize serve parameters"
-    echo "  - Default configuration inherits build-time settings"
-    echo "  - Multiple configurations can be stored per tag"
+    echo "  }"
 }
 
 # Export the function for use by other scripts
