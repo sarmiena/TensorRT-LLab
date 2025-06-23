@@ -7,16 +7,18 @@ source "$SCRIPT_DIR/help/build-engine.help"
 
 # Parse command line arguments
 TAG=""
+
 declare -A QUANTIZE_OVERRIDES
+declare -A CONVERT_CHECKPOINT_OVERRIDES
 declare -A TRTLLM_OVERRIDES
 
 declare -A COMPOSED_TRTLLM_ARGS_MAP
+declare -A COMPOSED_CONVERT_CHECKPOINT_ARGS_MAP
 declare -A COMPOSED_QUANTIZE_ARGS_MAP
 
 
 LIST_TAGS=false
 SHOW_BUILD_COMMAND=""
-SKIP_QUANTIZE=false
 
 print_usage() {
     show_build_engine_help
@@ -52,6 +54,11 @@ while [[ $# -gt 0 ]]; do
         --trtllm-build-*)
             ARG_NAME="${1#--trtllm-build-}"
             TRTLLM_OVERRIDES["--$ARG_NAME"]="$2"
+            shift 2
+            ;;
+        --convert-checkpoint-*)
+            ARG_NAME="${1#--convert-checkpoint-}"
+            CONVERT_CHECKPOINT_OVERRIDES["--$ARG_NAME"]="$2"
             shift 2
             ;;
         *)
@@ -152,6 +159,7 @@ show_build_metadata() {
 
 build_model() {
     mapfile -t quantize_base_args < <(jq -r '.quantize | to_entries[] | "--\(.key) \(.value)"' "$MODEL_CONFIG_FILE")
+    mapfile -t convert_checkpoint_base_args < <(jq -r '.convert_checkpoint | to_entries[] | "--\(.key) \(.value)"' "$MODEL_CONFIG_FILE")
     mapfile -t trtllm_base_args < <(jq -r '.trtllm_build | to_entries[] | "--\(.key) \(.value)"' "$MODEL_CONFIG_FILE")
     local checkpoint_dir=""
 
@@ -160,10 +168,15 @@ build_model() {
 
       build_quantize_cmd "${quantize_base_args[@]}"
       checkpoint_dir="/ckpt"
-      echo -e "\e[32mRunning: $COMPOSED_QUANTIZE_COMMAND\e[0m"
+      echo -e "\[32mRunning: $COMPOSED_QUANTIZE_COMMAND\[0m"
       eval "$COMPOSED_QUANTIZE_COMMAND"
-    else
-      echo -e "\e[33mSkipping quantize because no arguments given in config file or explicitly via --quantize-* \e[0m"
+    elif [[ ${#CONVERT_CHECKPOINT_OVERRIDES[@]} -gt 0 || -n "${convert_checkpoint_base_args[*]}" ]]; then
+      convert_checkpoint_base_args+=("--model_dir /model_weights/$MODEL")
+
+      build_convert_checkpoint_cmd "${convert_checkpoint_base_args[@]}"
+      checkpoint_dir="/ckpt"
+      echo -e "\[32mRunning: $COMPOSED_CONVERT_CHECKPOINT_COMMAND\[0m"
+      eval "$COMPOSED_CONVERT_CHECKPOINT_COMMAND"
     fi
 
     if [[ -z "$checkpoint_dir" ]]; then
@@ -273,6 +286,61 @@ build_quantize_cmd() {
     done
 
     COMPOSED_QUANTIZE_COMMAND="$cmd"
+}
+#
+# Function to build convert_checkpoint.py command with overrides
+build_convert_checkpoint_cmd() {
+    local base_args=("$@")
+
+    # Source the model selector
+    source ./model-script-selector
+
+    # Run the model selector to get user choice
+    if ! run_model_selector; then
+        echo "Model selection cancelled or failed"
+        return 1
+    fi
+
+    # Determine model type from the selected path
+    local model_type="core"
+    [[ "$SELECTED_MODEL_PATH" == *"/contrib/"* ]] && model_type="contrib"
+
+    # Build the command with the selected model
+    local cmd="python3 /app/tensorrt_llm/examples/$model_type/$SELECTED_MODEL/convert_checkpoint.py"
+
+    # First, parse the base args from JSON config (format: "--key value")
+    for ((i=0; i < ${#base_args[@]}; i++)); do
+        arg="${base_args[$i]}"
+        
+        # Split "--key value" into key and value
+        if [[ "$arg" =~ ^(--[^[:space:]]+)[[:space:]]+(.+)$ ]]; then
+            key="${BASH_REMATCH[1]}"
+            val="${BASH_REMATCH[2]}"
+        elif [[ "$arg" =~ ^(--[^[:space:]]+)$ ]]; then
+            key="${BASH_REMATCH[1]}"
+            val=""
+        else
+            continue  # Skip malformed args
+        fi
+
+        COMPOSED_CONVERT_CHECKPOINT_ARGS_MAP["$key"]="$val"
+    done
+
+    # Apply overrides (these are already in correct key=value format)
+    for key in "${!CONVERT_CHECKPOINT_OVERRIDES[@]}"; do
+        COMPOSED_CONVERT_CHECKPOINT_ARGS_MAP["$key"]="${CONVERT_CHECKPOINT_OVERRIDES[$key]}"
+    done
+
+    # Rebuild command
+    for key in "${!COMPOSED_CONVERT_CHECKPOINT_ARGS_MAP[@]}"; do
+        if [[ -n "${COMPOSED_CONVERT_CHECKPOINT_ARGS_MAP[$key]}" ]]; then
+            cmd+=" $key ${COMPOSED_CONVERT_CHECKPOINT_ARGS_MAP[$key]}"
+        else
+            cmd+=" $key"
+        fi
+    done
+
+    COMPOSED_CONVERT_CHECKPOINT_COMMAND="$cmd"
 }
 
 # Function to build trtllm-build command with overrides
