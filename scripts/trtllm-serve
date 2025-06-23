@@ -266,7 +266,7 @@ echo "Engine path: $ENGINE_PATH"
 # Set environment variables
 export KV_CACHE_FREE_GPU_MEM_FRACTION=0.9
 export ENGINE_DIR="$ENGINE_PATH"
-export TOKENIZER_DIR=/models/$MODEL
+export TOKENIZER_DIR=/model_weights/$MODEL
 
 # Build and execute the serve command
 build_serve_command
