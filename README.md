@@ -81,7 +81,7 @@ This will generate a container named tensorrt_llm/release
 ```                                                                 
 sudo apt-get update && sudo apt-get -y install git git-lfs && \     
 git lfs install && \                                                
-git clone --depth 1 -b v0.21.0rc2 https://github.com/NVIDIA/TensorRT-LLM.git && \
+git clone --depth 1 -b v1.0.0rc0 https://github.com/NVIDIA/TensorRT-LLM.git && \
 cd TensorRT-LLM && \                                
 git submodule update --init --recursive && \
 git lfs pull
