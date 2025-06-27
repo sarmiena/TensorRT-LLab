@@ -80,13 +80,16 @@ get_cuda_arch_settings() {
 
 # Setup repository and get available versions
 setup_repo() {
-    local repo_path="$1"
-    local repo_url="$2"
-    local repo_name="$3"
+    repo_path="$1"
+    repo_url="$2"
+    repo_name="$3"
 
     if [ ! -d "$repo_path" ]; then
         log "Cloning $repo_name..."
         git clone "$repo_url" "$repo_path"
+        cd "$repo_path"
+        git fetch --all --tags
+        cd "$BUILD_DIR"
     else
         log "$repo_name repository exists, fetching latest..."
         cd "$repo_path"
@@ -99,20 +102,41 @@ setup_repo() {
 
 # Get version selection from user
 select_version() {
-    local repo_path="$1"
-    local repo_name="$2"
+    repo_path="$1"
+    repo_name="$2"
+    result_var="$3"
 
     cd "$repo_path"
 
     # Get all tags in descending order
-    local tags=($(git tag --sort=-version:refname 2>/dev/null || git tag | sort -V -r))
+    tags=()
+
+    # Try git tag with version sorting first
+    if git tag --sort=-version:refname >/dev/null 2>&1; then
+        mapfile -t tags < <(git tag --sort=-version:refname)
+    else
+        # Fallback to basic sorting
+        mapfile -t tags < <(git tag | sort -V -r)
+    fi
+
+    # Check if we got any tags
+    if [[ ${#tags[@]} -eq 0 ]]; then
+        warning "No tags found in $repo_name repository."
+        echo "Available options:"
+        echo "1. master (latest development)"
+        echo
+        read -p "Select version (1 for master): " selection
+        eval "$result_var='master'"
+        cd "$BUILD_DIR"
+        return
+    fi
 
     echo
     echo "What version of $repo_name do you want to use?"
     echo "=============================================="
     echo "1. master (latest development)"
 
-    local counter=2
+    counter=2
     for tag in "${tags[@]}"; do
         echo "$counter. $tag"
         ((counter++))
@@ -122,10 +146,10 @@ select_version() {
     read -p "Select version (1-$((${#tags[@]} + 1))): " selection
 
     if [[ "$selection" == "1" ]]; then
-        echo "master"
+        eval "$result_var='master'"
     elif [[ "$selection" =~ ^[0-9]+$ ]] && [[ "$selection" -gt 1 ]] && [[ "$selection" -le $((${#tags[@]} + 1)) ]]; then
-        local tag_index=$((selection - 2))
-        echo "${tags[$tag_index]}"
+        tag_index=$((selection - 2))
+        eval "$result_var='${tags[$tag_index]}'"
     else
         error "Invalid selection"
     fi
@@ -140,10 +164,12 @@ setup_repositories() {
     setup_repo "$TENSORRT_LLM_PATH" "https://github.com/NVIDIA/TensorRT-LLM.git" "TensorRT-LLM"
     setup_repo "$TENSORRT_MODEL_OPTIMIZER_PATH" "https://github.com/NVIDIA/TensorRT-Model-Optimizer.git" "TensorRT-Model-Optimizer"
 
-    TENSORRT_LLM_VERSION=$(select_version "$TENSORRT_LLM_PATH" "TensorRT-LLM")
-    TENSORRT_MODEL_OPTIMIZER_VERSION=$(select_version "$TENSORRT_MODEL_OPTIMIZER_PATH" "TensorRT-Model-Optimizer")
+    select_version "$TENSORRT_LLM_PATH" "TensorRT-LLM" "TENSORRT_LLM_VERSION"
+    select_version "$TENSORRT_MODEL_OPTIMIZER_PATH" "TensorRT-Model-Optimizer" "TENSORRT_MODEL_OPTIMIZER_VERSION"
 
-    BASE_IMAGE_TAG="tensorrt-llm:${TENSORRT_LLM_VERSION}-cuda${CUDA_ARCH//[^0-9]/}"
+    CUDA_SIMPLE="${CUDA_ARCH//[^0-9]/}"
+    TORCH_SIMPLE="${TORCH_CUDA_ARCH_LIST//[^0-9.]/}"  # Keep digits and dots
+    BASE_IMAGE_TAG="tensorrt-llm:${TENSORRT_LLM_VERSION}-cuda${CUDA_SIMPLE}-torch-cuda-arch${TORCH_SIMPLE}"
 
     log "Selected TensorRT-LLM version: $TENSORRT_LLM_VERSION"
     log "Selected TensorRT-Model-Optimizer version: $TENSORRT_MODEL_OPTIMIZER_VERSION"
