@@ -1,3 +1,5 @@
+TensorRT-LLM
+TensorRT-Model-Optimizer
 *.swp
 engines/**
 model_weights/**
