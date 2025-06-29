@@ -228,7 +228,7 @@ setup_repositories() {
 
     CUDA_SIMPLE="${CUDA_ARCH//[^0-9]/}"
     TORCH_SIMPLE="${TORCH_CUDA_ARCH_LIST//[^0-9.]/}"  # Keep digits and dots
-    BASE_IMAGE_TAG="tensorrt-llm:${TENSORRT_LLM_VERSION}-cuda${CUDA_SIMPLE}-torch-cuda-arch${TORCH_SIMPLE}-whl-cu${PYTORCH_CUDA_WHEEL}"
+    BASE_IMAGE_TAG="tensorrt-llm:${TENSORRT_LLM_VERSION}-cuda${CUDA_SIMPLE}-torch-cuda-arch${TORCH_SIMPLE}-whl-${PYTORCH_CUDA_WHEEL}"
 
     log "Selected TensorRT-LLM version: $TENSORRT_LLM_VERSION"
     log "Selected TensorRT-Model-Optimizer version: $TENSORRT_MODEL_OPTIMIZER_VERSION"
