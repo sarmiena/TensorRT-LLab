@@ -7,6 +7,8 @@ TENSORRT_MODEL_OPTIMIZER_PATH="$BUILD_DIR/TensorRT-Model-Optimizer"
 
 CUDA_ARCH="120-real"
 TORCH_CUDA_ARCH_LIST="12.0+PTX"
+PYTORCH_CUDA_WHEEL="cu129"
+PYTORCH_WHEEL_URL=""
 
 # Colors for output
 RED='\033[0;31m'
@@ -31,6 +33,70 @@ error() {
     echo -e "${RED}[ERROR]${NC} $1"
     exit 1
 } 
+
+# Validate PyTorch CUDA wheel URL exists
+validate_pytorch_cuda_wheel() {
+    local cuda_version="$1"
+    local stable_url="https://download.pytorch.org/whl/${cuda_version}"
+    local nightly_url="https://download.pytorch.org/whl/nightly/${cuda_version}"
+
+    log "Validating PyTorch CUDA wheel availability for ${cuda_version}..."
+
+    # Check stable repository first
+    if curl -s --head --fail "${stable_url}" >/dev/null 2>&1; then
+        PYTORCH_WHEEL_URL="$stable_url"
+        log "Found ${cuda_version} in stable repository: ${stable_url}"
+        return 0
+    fi
+
+    # Check nightly repository
+    if curl -s --head --fail "${nightly_url}" >/dev/null 2>&1; then
+        PYTORCH_WHEEL_URL="$nightly_url"
+        log "Found ${cuda_version} in nightly repository: ${nightly_url}"
+        return 0
+    fi
+
+    return 1
+}
+
+# Get user input for PyTorch CUDA wheel version
+get_pytorch_cuda_wheel() {
+    while true; do
+        echo
+        echo "PyTorch CUDA Wheel Configuration"
+        echo "================================="
+        echo "Current default: $PYTORCH_CUDA_WHEEL"
+        echo
+        echo "Common CUDA wheel options:"
+        echo "  - cu129 (CUDA 12.9)"
+        echo "  - cu128 (CUDA 12.8)"
+        echo "  - cu124 (CUDA 12.4)"
+        echo "  - cu121 (CUDA 12.1)"
+        echo "  - cu118 (CUDA 11.8)"
+        echo
+
+        read -p "Enter PyTorch CUDA wheel version (press Enter for default: $PYTORCH_CUDA_WHEEL): " user_pytorch_cuda
+        if [[ -n "$user_pytorch_cuda" ]]; then
+            PYTORCH_CUDA_WHEEL="$user_pytorch_cuda"
+        fi
+
+        # Validate the selected CUDA wheel version
+        if validate_pytorch_cuda_wheel "$PYTORCH_CUDA_WHEEL"; then
+            success "PyTorch CUDA wheel ${PYTORCH_CUDA_WHEEL} is available"
+            log "Using PyTorch CUDA wheel: $PYTORCH_CUDA_WHEEL"
+            break
+        else
+            error_msg="PyTorch CUDA wheel ${PYTORCH_CUDA_WHEEL} not found in either:"
+            error_msg="${error_msg}\n  - https://download.pytorch.org/whl/${PYTORCH_CUDA_WHEEL}"
+            error_msg="${error_msg}\n  - https://download.pytorch.org/whl/nightly/${PYTORCH_CUDA_WHEEL}"
+            echo -e "${RED}[ERROR]${NC} ${error_msg}"
+            echo
+            echo "Please try a different CUDA wheel version."
+            # Reset to prompt again
+            PYTORCH_CUDA_WHEEL="cu129"
+        fi
+    done
+}
 
 # Check if Docker is running
 check_docker() {
@@ -162,7 +228,7 @@ setup_repositories() {
 
     CUDA_SIMPLE="${CUDA_ARCH//[^0-9]/}"
     TORCH_SIMPLE="${TORCH_CUDA_ARCH_LIST//[^0-9.]/}"  # Keep digits and dots
-    BASE_IMAGE_TAG="tensorrt-llm:${TENSORRT_LLM_VERSION}-cuda${CUDA_SIMPLE}-torch-cuda-arch${TORCH_SIMPLE}"
+    BASE_IMAGE_TAG="tensorrt-llm:${TENSORRT_LLM_VERSION}-cuda${CUDA_SIMPLE}-torch-cuda-arch${TORCH_SIMPLE}-whl-cu${PYTORCH_CUDA_WHEEL}"
 
     log "Selected TensorRT-LLM version: $TENSORRT_LLM_VERSION"
     log "Selected TensorRT-Model-Optimizer version: $TENSORRT_MODEL_OPTIMIZER_VERSION"
@@ -173,6 +239,8 @@ update_cuda_arch_settings() {
     log "Updating CUDA architecture settings in TensorRT-LLM..."
     log "Target CUDA_ARCH: ${CUDA_ARCH}"
     log "Target TORCH_CUDA_ARCH_LIST: ${TORCH_CUDA_ARCH_LIST}"
+    log "Target PyTorch CUDA wheel: ${PYTORCH_CUDA_WHEEL}"
+
 
     cd "$TENSORRT_LLM_PATH"
     local torch_cuda_arch_list_semicolon=$(echo "${TORCH_CUDA_ARCH_LIST}" | tr ' ' ';')
@@ -181,11 +249,15 @@ update_cuda_arch_settings() {
       sed -i.bak -E "s/cu[0-9]+/cu129/" ./requirements.txt
     fi
 
+    if [ -f "./requirements.txt" ]; then
+      sed -i.bak -E "s|https://download\.pytorch\.org/whl/.*|${PYTORCH_WHEEL_URL}|g" ./requirements.txt
+    fi
+
     # Update PyTorch installation script
     if [ -f "docker/common/install_pytorch.sh" ]; then
         log "Updating docker/common/install_pytorch.sh..."
         sed -i.bak "s/TORCH_CUDA_ARCH_LIST=\"[^\"]*\"/TORCH_CUDA_ARCH_LIST=\"${torch_cuda_arch_list_semicolon}\"/" docker/common/install_pytorch.sh
-        sed -i.bak -E "s/cu[0-9]+/cu129/" docker/common/install_pytorch.sh
+        sed -i.bak -E "s|https://download\.pytorch\.org/whl/.*|${PYTORCH_WHEEL_URL}|g" ./docker/common/install_pytorch.sh
         success "Updated PyTorch installation script"
     fi
 
@@ -270,6 +342,7 @@ main() {
 
     # Get user input for configuration
     get_cuda_arch_settings
+    get_pytorch_cuda_wheel
     setup_repositories
 
     # Clean base image if requested (now that we have the tag)
@@ -286,6 +359,7 @@ main() {
     log "TensorRT-LLM version: ${TENSORRT_LLM_VERSION}"
     log "CUDA Architecture: ${CUDA_ARCH}"
     log "PyTorch CUDA Arch List: ${TORCH_CUDA_ARCH_LIST}"
+    log "PyTorch CUDA Wheel: ${PYTORCH_CUDA_WHEEL}"
     echo
     success "You can now run TensorRT-LLab with: ./trt-llab"
 }
