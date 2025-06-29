@@ -189,6 +189,7 @@ DOCKER_ARGS=(
     "-v" "$HOME/.cache/huggingface:/root/.cache/huggingface"
     "-v" "./scripts:/scripts"
     "-v" "./engines:/engines"
+    "-v" "./model_build_configs:/model_build_configs"
     "--net=host"
     "--ipc=host"
     "--ulimit" "memlock=-1"

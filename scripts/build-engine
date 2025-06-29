@@ -552,7 +552,7 @@ rm -rf /ckpt
 rm -rf "$OUTPUT_DIR"
 
 # Check if model configuration file exists
-MODEL_CONFIGS="$SCRIPT_DIR/../model_build_configs"
+MODEL_CONFIGS="/model_build_configs"
 MODEL_CONFIG_FILE="${MODEL_CONFIGS}/${MODEL}.json"
 if [ ! -f "$MODEL_CONFIG_FILE" ]; then
     soft_error "Model configuration file not found: $MODEL_CONFIG_FILE"
