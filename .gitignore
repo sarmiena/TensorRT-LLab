@@ -3,6 +3,7 @@ TensorRT-Model-Optimizer
 *.swp
 engines/**
 model_weights/**
+model_build_configs/**
 scripts/**/model.cache
 scripts/models/*.json
 venv/

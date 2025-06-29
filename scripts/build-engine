@@ -21,6 +21,35 @@ declare -A COMPOSED_QUANTIZE_ARGS_MAP
 LIST_TAGS=false
 SHOW_BUILD_COMMAND=""
 
+# Colors for output
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+NC='\033[0m' # No Color
+
+log() {
+    echo -e "${BLUE}[$(date +'%Y-%m-%d %H:%M:%S')]${NC} $1"
+}
+
+success() {
+    echo -e "${GREEN}[SUCCESS]${NC} $1"
+}
+
+warning() {
+    echo -e "${YELLOW}[WARNING]${NC} $1"
+}
+
+soft_error() {
+    echo -e "${RED}[ERROR]${NC} $1"
+}
+
+error() {
+    echo -e "${RED}[ERROR]${NC} $1"
+    exit 1
+}
+
+
 print_usage() {
     show_build_engine_help
 }
@@ -141,19 +170,17 @@ show_build_metadata() {
     local tag="$2"
     
     if [ -z "$model" ] || [ -z "$tag" ]; then
-        echo "Error: Both --model and --show-build-metadata (tag) are required"
-        exit 1
+        error "Both --model and --show-build-metadata (tag) are required"
     fi
     
     local build_command_file="/engines/$model/$tag/build-command.json"
     
     if [ ! -f "$build_command_file" ]; then
-        echo -e "\033[32mError: Build command file not found: $build_command_file\033[0m"
-        exit 1
+        error "Build command file not found: $build_command_file"
     fi
     
     echo
-    echo -ne "\033[1;33mBuild command for model '$model', tag '$tag':\033[0m\c"
+    log "Build command for model '$model', tag '$tag':"
     echo
     cat "$build_command_file" | jq
 }
@@ -165,6 +192,7 @@ build_model() {
 
     local checkpoint_dir=""
 
+    # Doing if/elif for quantize vs convert_checkpoint because as far as I know you don't do both
     if [[ ${#QUANTIZE_OVERRIDES[@]} -gt 0 || -n "${quantize_base_args[*]}" ]]; then
       checkpoint_dir="/ckpt"
       quantize_base_args+=("--model_dir /model_weights/$MODEL" "--output_dir $checkpoint_dir")
@@ -173,7 +201,15 @@ build_model() {
       echo -e "\033[32mRunning: $COMPOSED_QUANTIZE_COMMAND\033[0m"
       eval "$COMPOSED_QUANTIZE_COMMAND"
     elif [[ ${#CONVERT_CHECKPOINT_OVERRIDES[@]} -gt 0 || -n "${convert_checkpoint_base_args[*]}" ]]; then
-      checkpoint_dir="/ckpt"
+
+      if [[ ${#TRTLLM_OVERRIDES[@]} -gt 0 || -n "${trtllm_base_args[*]}" ]]; then
+        checkpoint_dir='/ckpt'
+      else
+        # Apparently you can serve the output of convert_checkpoint without having to do a trtllm-build
+        # So putting this else case here to allow for that to happen. Would just need to make sure the
+        # trtllm_build is blank in the .json config file
+        checkpoint_dir=$MODEL_OUTPUT_DIR
+      fi
       convert_checkpoint_base_args+=("--model_dir /model_weights/$MODEL" "--output_dir $checkpoint_dir")
 
       build_convert_checkpoint_cmd "${convert_checkpoint_base_args[@]}"
@@ -182,16 +218,17 @@ build_model() {
     fi
 
     if [[ -z "$checkpoint_dir" ]]; then
-      echo -e "\033[31mError: No checkpoint directory detected via --output_dir"
-      exit 1
+      error "No checkpoint directory detected via --output_dir"
     fi
 
-    trtllm_base_args+=("--output_dir $MODEL_OUTPUT_DIR" "--checkpoint_dir $checkpoint_dir")
-    build_trtllm_cmd "${trtllm_base_args[@]}"
+    if [[ ${#TRTLLM_OVERRIDES[@]} -gt 0 || -n "${trtllm_base_args[*]}" ]]; then
+      trtllm_base_args+=("--output_dir $MODEL_OUTPUT_DIR" "--checkpoint_dir $checkpoint_dir")
+      build_trtllm_cmd "${trtllm_base_args[@]}"
 
 
-    echo -e "\033[32mRunning: $COMPOSED_TRTLLM_COMMAND\033[0m"
-    eval "$COMPOSED_TRTLLM_COMMAND"
+      echo -e "\033[32mRunning: $COMPOSED_TRTLLM_COMMAND\033[0m"
+      eval "$COMPOSED_TRTLLM_COMMAND"
+    fi
 
     save_build_command
     generate_serve_args
@@ -199,9 +236,7 @@ build_model() {
 
 if [ "$LIST_TAGS" = true ]; then
     if [ -z "$MODEL" ]; then
-        echo "Error: MODEL environment variable is required for --list-tags"
-        echo "This command should be run through the trt-llab wrapper with --model specified"
-        exit 1
+        error "MODEL environment variable is required for --list-tags\r\n\tThis command should be run through the trt-llab wrapper with --model specified"
     fi
     list_tags "$MODEL"
     exit 0
@@ -209,9 +244,7 @@ fi
 
 if [ -n "$SHOW_BUILD_COMMAND" ]; then
     if [ -z "$MODEL" ]; then
-        echo "Error: MODEL environment variable is required for --show-build-metadata"
-        echo "This command should be run through the trt-llab wrapper with --model specified"
-        exit 1
+        error "MODEL environment variable is required for --show-build-metadata\r\n\tThis command should be run through the trt-llab wrapper with --model specified"
     fi
     show_build_metadata "$MODEL" "$SHOW_BUILD_COMMAND"
     exit 0
@@ -219,8 +252,8 @@ fi
 
 # Check if model and tag arguments were provided
 if [ -z "$MODEL" ]; then
-    echo "Error: --model argument is required"
-    echo "Usage: $0 --model <model_name> --tag <tag> [--quantize-<arg> <value>] [--trtllm-build-<arg> <value>]"
+    soft_error "Error: --model argument is required"
+    echo "\tUsage: $0 --model <model_name> --tag <tag> [--quantize-<arg> <value>] [--trtllm-build-<arg> <value>]"
     exit 1
 fi
 
@@ -238,8 +271,8 @@ if [[ -n "${DELETE_TAG:-}" ]]; then
 fi
 
 if [ -z "$TAG" ]; then
-    echo "Error: --tag argument is required"
-    echo "Usage: $0 --model <model_name> --tag <tag> [--quantize-<arg> <value>] [--trtllm-build-<arg> <value>]"
+    soft_error "--tag argument is required"
+    echo "\tUsage: $0 --model <model_name> --tag <tag> [--quantize-<arg> <value>] [--trtllm-build-<arg> <value>]"
     exit 1
 fi
 
@@ -510,22 +543,23 @@ OUTPUT_DIR="/engines/$MODEL/$TAG"
 # Check if output directory exists and handle overwrite
 if [ -d "$OUTPUT_DIR" ]; then
     echo
-    echo -ne "\033[1;31mWarning: Tag '$(basename "$OUTPUT_DIR")' already exists.\033[0m \c"
+    warning "Tag '$(basename "$OUTPUT_DIR")' already exists."
     confirm_and_delete_tagged_engine "$OUTPUT_DIR" "delete and overwrite"
 fi
 
 # Clean up previous builds (transient ckpt and specific engine files)
 rm -rf /ckpt
-rm -rf "$OUTPUT_DIR/config.json"
-rm -rf "$OUTPUT_DIR"/*.engine
+rm -rf "$OUTPUT_DIR"
 
 # Check if model configuration file exists
-MODEL_CONFIG_FILE="$SCRIPT_DIR/models/${MODEL}.json"
+MODEL_CONFIGS="$SCRIPT_DIR/../model_build_configs"
+MODEL_CONFIG_FILE="${MODEL_CONFIGS}/${MODEL}.json"
 if [ ! -f "$MODEL_CONFIG_FILE" ]; then
-    echo "Error: Model configuration file not found: $MODEL_CONFIG_FILE"
+    soft_error "Model configuration file not found: $MODEL_CONFIG_FILE"
+    echo
     echo "Available models:"
-    if [ -d "$SCRIPT_DIR/models" ]; then
-        for model_file in "$SCRIPT_DIR/models"/*.json; do
+    if [ -d "${MODEL_CONFIGS}" ]; then
+        for model_file in "${MODEL_CONFIGS}"/*.json; do
             if [ -f "$model_file" ]; then
                 basename "$model_file" .json | sed 's/^/  - /'
             fi
