@@ -7,9 +7,12 @@ model_build_configs/**
 scripts/**/model.cache
 scripts/models/*.json
 venv/
+.venv
 __pycache__/
 *.pyc
 *.pyo
 .env
 .DS_Store
 *.bak
+extra_llm_api_options/*.yml
+.tool-versions

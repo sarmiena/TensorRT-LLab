@@ -76,8 +76,10 @@ show_trtllm_serve_help() {
     echo "  --gpus_per_node                 GPUs per node"
     echo "  --kv_cache_free_gpu_memory_fraction  KV cache memory fraction"
     echo "  --num_postprocess_workers       Number of postprocess workers"
-    echo -e "\033[0m"
-    echo "[32mConfiguration File Format:"
+    echo
+    echo
+    echo "Configuration File Example:"
+    echo
     echo "  Serving configurations are stored in serve-args.json:"
     echo "  {"
     echo "    \"default\": {"
@@ -96,7 +98,7 @@ show_trtllm_serve_help() {
     echo "        \"--port\": \"8001\""
     echo "      }"
     echo "    }"
-    echo "  }"
+    echo -e "  }\033[0m"
 }
 
 # Export the function for use by other scripts
