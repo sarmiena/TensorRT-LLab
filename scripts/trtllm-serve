@@ -23,6 +23,8 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
+set -- "${TEMP_ARGS[@]}"
+
 # Parse arguments
 while [[ "$#" -gt 0 ]]; do
     case $1 in
@@ -35,12 +37,13 @@ while [[ "$#" -gt 0 ]]; do
             shift 2
             ;;
         --list-tags)
-            echo "Available tags for model $MODEL:"
+            echo -e "\033[33mAvailable tags for model $MODEL:"
             if [ -d "/engines/$MODEL" ]; then
                 ls -1 /engines/$MODEL/ 2>/dev/null || echo "No tags found"
             else
                 echo "No engine directory found for model $MODEL"
             fi
+            echo -e "\033[0m"
             exit 0
             ;;
         --edit)

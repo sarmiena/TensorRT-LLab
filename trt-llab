@@ -2,6 +2,7 @@
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/scripts/help/common.help"
 source "$SCRIPT_DIR/scripts/help/main.help"
+source "$SCRIPT_DIR/scripts/model-selector"
 
 MODEL_NAME=""
 GPUS="all"  # Default value
@@ -166,18 +167,38 @@ if [ "$CONTAINER_SPECIFIED" = false ] && [[ ! " ${REMAINING_ARGS[*]} " =~ " --he
     select_container
 fi
 
-# Special handling for help when no model is provided
-if [ -z "$MODEL_NAME" ] && [[ ! " ${REMAINING_ARGS[*]} " =~ " --help " ]] && [ ! $COMMAND = "bash" ]; then
+# Handle model selection for commands that require a model
+if [[ "$COMMAND" == "build-engine" || "$COMMAND" == "trtllm-serve" ]]; then
+    # If no model specified and not asking for help, run the model selector
+    if [ -z "$MODEL_NAME" ] && [[ ! " ${REMAINING_ARGS[*]} " =~ " --help " ]]; then
+        echo "No --model specified. Please select a model:"
+        echo
+        
+        # Run the model selector
+        if run_model_weights_selector; then
+            MODEL_NAME="$SELECTED_MODEL"
+            echo
+            log "Selected model: $MODEL_NAME"
+        else
+            echo "No model selected. Exiting."
+            exit 1
+        fi
+    fi
+    
+    # Validate the selected/provided model exists
+    if [ -n "$MODEL_NAME" ] && [ ! -d "./model_weights/$MODEL_NAME" ]; then
+        echo "Error: Directory './model_weights/$MODEL_NAME' not found in the current directory"
+        echo
+        list_available_models
+        exit 1
+    fi
+fi
+
+# Special handling for help when no model is provided for non-model commands
+if [ -z "$MODEL_NAME" ] && [[ ! " ${REMAINING_ARGS[*]} " =~ " --help " ]] && [[ "$COMMAND" != "bash" && "$COMMAND" != "build-engine" && "$COMMAND" != "trtllm-serve" ]]; then
     echo "Error: --model argument is required"
     echo
     print_usage
-    exit 1
-fi
-
-if [ -n "$MODEL_NAME" ] && [ ! -d "./model_weights/$MODEL_NAME" ]; then
-    echo "Error: Directory './model_weights/$MODEL_NAME' not found in the current directory"
-    echo
-    list_available_models
     exit 1
 fi
 

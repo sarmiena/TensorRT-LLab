@@ -1,0 +1,328 @@
+#!/bin/bash
+# Interactive model selector for TensorRT-LLab - selects from model_weights directory
+
+# Get terminal dimensions and calculate items per page
+get_terminal_size() {
+    local height=$(tput lines 2>/dev/null || echo 24)
+    local width=$(tput cols 2>/dev/null || echo 80)
+    
+    # Reserve space for header (4 lines) and footer (3 lines) + 3 buffer
+    items_per_page=$((height - 10))
+    [[ $items_per_page -lt 5 ]] && items_per_page=5
+    [[ $items_per_page -gt 50 ]] && items_per_page=50  # Reasonable cap
+}
+
+show_page() {
+    clear
+    local start_idx=$((current_page * items_per_page))
+    local end_idx=$((start_idx + items_per_page - 1))
+    [[ $end_idx -ge ${#filtered_models[@]} ]] && end_idx=$((${#filtered_models[@]} - 1))
+    
+    # Header
+    echo "═══════════════════════════════════════════════════════════════"
+    echo "  Model Selection - Page $((current_page + 1)) of $total_pages"
+    [[ -n "$current_filter" ]] && echo "  Filter: '$current_filter' (${#filtered_models[@]} matches)" || echo "  All models (${#filtered_models[@]} total)"
+    echo "═══════════════════════════════════════════════════════════════"
+    
+    # Model list with numbers
+    local display_num=1
+    for i in $(seq $start_idx $end_idx); do
+        if [[ $i -lt ${#filtered_models[@]} ]]; then
+            local model_name="${filtered_models[i]}"
+            printf "%2d. %s\n" $display_num "$model_name"
+            ((display_num++))
+        fi
+    done
+    
+    # Footer with controls
+    echo
+    echo "───────────────────────────────────────────────────────────────"
+    if [[ $total_pages -gt 1 ]]; then
+        echo "Navigation: [←/→] or [PgUp/PgDn] pages | [number + Enter] select | [/] filter | [q] quit"
+    else
+        echo "Controls: [number + Enter] select | [/] filter | [q] quit"
+    fi
+}
+
+show_confirmation() {
+    local model_name="$1"
+    
+    clear
+    echo "═══════════════════════════════════════════════════════════════"
+    echo "  Confirm Model Selection"
+    echo "═══════════════════════════════════════════════════════════════"
+    echo
+    echo "Selected Model: $model_name"
+    echo "Path: ./model_weights/$model_name"
+    echo
+    echo "───────────────────────────────────────────────────────────────"
+    echo -n "Confirm selection? [Y/n]: "
+}
+
+filter_models() {
+    filtered_models=()
+    for model in "${all_models[@]}"; do
+        if [[ "$model" == *"$current_filter"* ]]; then
+            filtered_models+=("$model")
+        fi
+    done
+    current_page=0
+    calculate_pages
+}
+
+calculate_pages() {
+    if [[ ${#filtered_models[@]} -eq 0 ]]; then
+        total_pages=1
+    else
+        total_pages=$(( (${#filtered_models[@]} + items_per_page - 1) / items_per_page ))
+    fi
+}
+
+get_autocomplete_suggestions() {
+    local input="$1"
+    local suggestions=()
+    
+    for model in "${all_models[@]}"; do
+        if [[ "$model" == "$input"* ]]; then
+            suggestions+=("$model")
+        fi
+    done
+    
+    echo "${suggestions[@]}"
+}
+
+handle_number_input() {
+    local first_digit="$1"
+    echo
+    echo -n "Enter selection number: $first_digit"
+    
+    local input="$first_digit"
+    while true; do
+        read -rsn1 char
+        case "$char" in
+            $'\x7f'|$'\x08')  # Backspace
+                if [[ ${#input} -gt 0 ]]; then
+                    input="${input%?}"
+                    echo -ne "\b \b"
+                fi
+                ;;
+            '')  # Enter
+                if [[ -n "$input" && "$input" =~ ^[0-9]+$ ]]; then
+                    local num=$((input))
+                    local start_idx=$((current_page * items_per_page))
+                    local actual_idx=$((start_idx + num - 1))
+                    
+                    # Bounds checking
+                    if [[ $num -gt 0 && $actual_idx -lt ${#filtered_models[@]} ]]; then
+                        local selected_model="${filtered_models[$actual_idx]}"
+                        
+                        show_confirmation "$selected_model"
+                        
+                        read -rsn1 confirm
+                        case "$confirm" in
+                            Y|y|'')  # Enter defaults to yes
+                                clear
+                                echo "Selected Model: $selected_model"
+                                
+                                # Export for use in calling script
+                                export SELECTED_MODEL="$selected_model"
+                                return 0
+                                ;;
+                            *)
+                                # Go back to selection
+                                return 1
+                                ;;
+                        esac
+                    else
+                        echo
+                        local max_items=$((${#filtered_models[@]} - start_idx))
+                        [[ $max_items -gt $items_per_page ]] && max_items=$items_per_page
+                        echo "Number out of range (1-$max_items). Press any key to continue..."
+                        read -rsn1
+                        return 1
+                    fi
+                else
+                    return 1
+                fi
+                ;;
+            $'\x1b')  # Escape
+                return 1
+                ;;
+            [0-9])
+                input="$input$char"
+                echo -n "$char"
+                ;;
+        esac
+    done
+}
+
+handle_filter_input() {
+    echo
+    echo "Filter models (type to search, TAB for autocomplete, Enter to apply):"
+    echo -n "Filter: "
+    
+    local input=""
+    local cursor_pos=0
+    
+    while true; do
+        read -rsn1 char
+        case "$char" in
+            $'\x7f'|$'\x08')  # Backspace
+                if [[ $cursor_pos -gt 0 ]]; then
+                    input="${input%?}"
+                    ((cursor_pos--))
+                    echo -ne "\b \b"
+                fi
+                ;;
+            $'\t')  # Tab for autocomplete
+                local suggestions=($(get_autocomplete_suggestions "$input"))
+                if [[ ${#suggestions[@]} -eq 1 ]]; then
+                    # Complete with the single suggestion
+                    local completion="${suggestions[0]}"
+                    local to_add="${completion:${#input}}"
+                    input="$completion"
+                    cursor_pos=${#input}
+                    echo -n "$to_add"
+                elif [[ ${#suggestions[@]} -gt 1 ]]; then
+                    # Show suggestions
+                    echo
+                    echo "Suggestions:"
+                    for suggestion in "${suggestions[@]:0:10}"; do  # Show max 10
+                        echo "  $suggestion"
+                    done
+                    [[ ${#suggestions[@]} -gt 10 ]] && echo "  ... and $((${#suggestions[@]} - 10)) more"
+                    echo -n "Filter: $input"
+                fi
+                ;;
+            '')  # Enter
+                current_filter="$input"
+                filter_models
+                return
+                ;;
+            $'\x1b')  # Escape
+                current_filter=""
+                filter_models
+                return
+                ;;
+            *)
+                if [[ -n "$char" && "$char" != $'\x00' ]]; then
+                    input="$input$char"
+                    ((cursor_pos++))
+                    echo -n "$char"
+                fi
+                ;;
+        esac
+    done
+}
+
+# Main function to run the model selector
+run_model_weights_selector() {
+    local model_weights_dir="./model_weights"
+    [ -d "/model_weights" ] && model_weights_dir="/model_weights"
+
+    # Collect available models
+    all_models=()
+    if [[ -d "$model_weights_dir" ]]; then
+        for model_dir in "$model_weights_dir"/*/; do
+            if [[ -d "$model_dir" ]]; then
+                model_name=$(basename "$model_dir")
+                # Skip .gitkeep and other non-model files
+                if [[ "$model_name" != ".gitkeep" && -d "$model_dir" ]]; then
+                    all_models+=("$model_name")
+                fi
+            fi
+        done
+    fi
+
+    # Sort models alphabetically
+    IFS=$'\n' all_models=($(sort <<<"${all_models[*]}"))
+    unset IFS
+
+    # Check if we have any models
+    if [[ ${#all_models[@]} -eq 0 ]]; then
+        echo "No models found in $model_weights_dir/"
+        echo
+        echo "To add a model, download it to $model_weights_dir/<model-name>/"
+        echo "Example:"
+        echo "  git clone https://huggingface.co/meta-llama/Llama-3.1-8B-Instruct model_weights/meta-llama_Llama-3.1-8B-Instruct"
+        return 1
+    fi
+
+    # If only one model, select it automatically
+    if [[ ${#all_models[@]} -eq 1 ]]; then
+        export SELECTED_MODEL="${all_models[0]}"
+        echo "Found 1 model, using: ${all_models[0]}"
+        return 0
+    fi
+
+    # Initialize
+    get_terminal_size
+    filtered_models=("${all_models[@]}")
+    current_page=0
+    current_filter=""
+    calculate_pages
+
+    # Main loop
+    while true; do
+        show_page
+        
+        read -rsn1 key
+        
+        case "$key" in
+            $'\x1b')  # ESC sequence for arrow keys and page up/down
+                read -rsn1 key2
+                case "$key2" in
+                    '[')
+                        read -rsn1 key3
+                        case "$key3" in
+                            'C'|'D')  # Right/Left arrow
+                                if [[ "$key3" == 'C' && $current_page -lt $((total_pages - 1)) ]]; then
+                                    ((current_page++))
+                                elif [[ "$key3" == 'D' && $current_page -gt 0 ]]; then
+                                    ((current_page--))
+                                fi
+                                ;;
+                            '5')  # Page Up
+                                read -rsn1 key4  # Read the '~'
+                                if [[ "$key4" == "~" && $current_page -gt 0 ]]; then
+                                    ((current_page--))
+                                fi
+                                ;;
+                            '6')  # Page Down
+                                read -rsn1 key4  # Read the '~'
+                                if [[ "$key4" == "~" && $current_page -lt $((total_pages - 1)) ]]; then
+                                    ((current_page++))
+                                fi
+                                ;;
+                        esac
+                        ;;
+                esac
+                ;;
+            '/')  # Filter
+                handle_filter_input
+                ;;
+            q|Q)
+                echo "Selection cancelled."
+                return 1
+                ;;
+            [0-9])  # Number selection
+                handle_number_input "$key"
+                return $?  # Return the result of handle_number_input
+                ;;
+        esac
+    done
+}
+
+# Export the function for use by other scripts
+export -f run_model_weights_selector
+
+# If this script is being run directly (not sourced), run the selector
+if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
+    run_model_weights_selector
+    if [[ $? -eq 0 && -n "$SELECTED_MODEL" ]]; then
+        echo "Selected: $SELECTED_MODEL"
+    else
+        echo "No model selected."
+        exit 1
+    fi
+fi
