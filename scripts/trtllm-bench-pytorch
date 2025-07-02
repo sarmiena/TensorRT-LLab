@@ -1,0 +1,17 @@
+#!/bin/bash
+python /app/tensorrt_llm/benchmarks/cpp/prepare_dataset.py \
+	--stdout \
+	--tokenizer /model_weights/$MODEL \
+	token-norm-dist \
+	--input-mean 128 \
+	--output-mean 128 \
+	--input-stdev 0 \
+	--output-stdev 0 \
+	--num-requests 3000 > /tmp/synthetic_128_128.txt
+
+trtllm-bench --model /model_weights/$MODEL/ \
+	--model_path /model_weights/$MODEL/ \
+	throughput \
+	--dataset /tmp/synthetic_128_128.txt \
+	--backend pytorch \
+	--extra_llm_api_options /extra_llm_api_options/pytorch-small-batch.yml

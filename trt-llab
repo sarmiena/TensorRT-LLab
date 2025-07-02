@@ -212,6 +212,7 @@ DOCKER_ARGS=(
     "-v" "./engines:/engines"
     "-v" "./model_build_configs:/model_build_configs"
     "-v" "./extra_llm_api_options:/extra_llm_api_options"
+    "-v" "./model_serve_args:/model_serve_args"
     "--net=host"
     "--ipc=host"
     "--ulimit" "memlock=-1"

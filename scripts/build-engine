@@ -467,7 +467,8 @@ EOF
 }
 
 generate_serve_args() {
-    echo "Generating '$OUTPUT_DIR/serve-args.json'"
+    local serve_file="model_serve_args/$MODEL.$TAG.json"
+    echo "Generating '$serve_file'"
 
     # Allowable trtllm-serve arguments
     TRTLLM_SERVE_ARGS=(
@@ -518,7 +519,7 @@ generate_serve_args() {
     done
 
     # Create serve-args.json
-    cat > "$OUTPUT_DIR/serve-args.json" << EOF
+    cat > "$serve_file" << EOF
 {
   "default": {
     "notes": "Defaults created from build configuration on $(date -Iseconds)",
@@ -526,11 +527,6 @@ generate_serve_args() {
 $(for key in "${!DEFAULT_SERVE_ARGS[@]}"; do
     echo "      \"$key\": \"${DEFAULT_SERVE_ARGS[$key]}\","
 done | sed '$s/,$//')
-    }
-  },
-  "my_custom_args": {
-    "notes": "Add your custom serving configuration here. Supported args: $TRTLLM_SERVE_ARGS",
-    "args": {
     }
   }
 }

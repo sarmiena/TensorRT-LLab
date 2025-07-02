@@ -74,29 +74,6 @@ while [[ "$#" -gt 0 ]]; do
             echo -e "\033[0m"
             exit 0
             ;;
-        --edit)
-            EDIT_CONFIG=true
-            shift
-            ;;
-	      --list-serve-configs)
-            if [ -z "$TAG" ]; then
-                if [ -n "$2" ] && [[ "$2" != --* ]]; then
-                    TAG="$2"
-                    shift
-                else
-                    TAG="default"
-                fi
-            fi
-            ENGINE_PATH="/engines/$MODEL/$TAG"
-            SERVE_ARGS_FILE="$ENGINE_PATH/serve-args.json"
-            if [ -f "$SERVE_ARGS_FILE" ]; then
-                echo "Available serve configurations for tag '$TAG':"
-                jq -r 'keys[]' "$SERVE_ARGS_FILE" 2>/dev/null || echo "Error reading serve-args.json"
-            else
-                echo "No serve-args.json found for tag '$TAG'"
-            fi
-            exit 0
-            ;;
         --show-serve-config)
             if [ -z "$TAG" ]; then
                 if [ -n "$2" ] && [[ "$2" != --* ]]; then
@@ -106,8 +83,7 @@ while [[ "$#" -gt 0 ]]; do
                     TAG="default"
                 fi
             fi
-            SHOW_CONFIG_NAME="$2"
-            shift 2
+            shift
             ;;
         *)
 	    echo
@@ -145,118 +121,41 @@ if [ ! -d "$ENGINE_PATH" ]; then
     exit 1
 fi
 
-SERVE_ARGS_FILE="$ENGINE_PATH/serve-args.json"
-if [ ! -f "$SERVE_ARGS_FILE" ]; then
-    echo "Warning: serve-args.json not found at $SERVE_ARGS_FILE"
-    if [ "$EDIT_CONFIG" = true ]; then
-      echo "Cannot edit: serve-args.json file does not exist"
-      exit 1
-    fi
-    echo "Using basic configuration..."
-    BASIC_SERVE=true
-fi
+build_serve_args() {
+  if [[ -n $SERVE_CONFIG ]]; then
+    log "\033[32m Using --serve-config $SERVE_CONFIG\033[0m"
+  else
+    SERVE_CONFIG='default'
+    log "--serve-config was left blank. Going to use 'default'"
+  fi
 
-if [ "$EDIT_CONFIG" = true ]; then
-    echo "Opening serve-args.json for editing..."
-    # Use EDITOR environment variable, fall back to common editors
-    EDITOR_CMD="${EDITOR:-${VISUAL:-$(which vim 2>/dev/null || which vi 2>/dev/null || which nano 2>/dev/null)}}"
+  SERVE_ARGS_FILE="/model_serve_args/$MODEL.$SERVE_CONFIG.json"
 
-    if [ -z "$EDITOR_CMD" ]; then
-        echo "Error: No suitable editor found. Please set EDITOR environment variable."
-        echo "Available options: vim, vi, nano"
-        exit 1
-    fi
+  if [[ ! -f "$SERVE_ARGS_FILE" ]]; then
+    SERVE_ARGS_FILE="/model_serve_args/$SERVE_CONFIG.json"
+  fi
 
-    echo "Using editor: $EDITOR_CMD"
-    echo "File: $SERVE_ARGS_FILE"
-
-    # Validate JSON after editing
-    TEMP_FILE=$(mktemp)
-    cp "$SERVE_ARGS_FILE" "$TEMP_FILE"
-
-    $EDITOR_CMD "$SERVE_ARGS_FILE"
-
-    # Check if the edited file is valid JSON
-    if ! jq . "$SERVE_ARGS_FILE" > /dev/null 2>&1; then
-        echo
-        echo "Error: Invalid JSON detected after editing!"
-        echo -ne "\033[1;31mRestore backup? (y/N):\033[0m \c"
-        read restore
-        case "$restore" in
-            [Yy]* )
-                cp "$TEMP_FILE" "$SERVE_ARGS_FILE"
-                echo "Backup restored."
-                ;;
-            * )
-                echo "Keeping current file. Please fix JSON syntax manually."
-                ;;
-        esac
-    else
-        echo "JSON validation passed."
-    fi
-
-    rm -f "$TEMP_FILE"
-    exit 0
-fi
-
-show_config() {
-    local config_name="$1"
-    local message="$2"
-
-    if [ ! -f "$SERVE_ARGS_FILE" ]; then
-        echo "Error: serve-args.json not found"
-        exit 1
-    fi
-
-    # If no config name provided, show the entire file nicely formatted
-    if [ -z "$config_name" ]; then
-        echo "All serving configurations for tag '$TAG':"
-        echo "=============================================="
-        jq '.' "$SERVE_ARGS_FILE"
-        return 0
-    fi
-
-    # Check if the specific config exists
-    if ! jq -e ".\"$config_name\"" "$SERVE_ARGS_FILE" > /dev/null 2>&1; then
-        echo -e "\033[1;31mError: Configuration '$config_name' not found in serve-args.json\033[0m"
-        echo
-        echo "Available configurations:"
-        echo
-        jq '.' "$SERVE_ARGS_FILE"
-        exit 1
-    fi
-
-    echo
-    if [[ -n "$message" ]]; then
-      echo -e "$message"
-      echo
-    else
-      echo "Serve config '$config_name' for tag '$TAG':"
-      echo
-    fi
-    jq ".\"$config_name\"" "$SERVE_ARGS_FILE"
+  if [[ ! -f "$SERVE_ARGS_FILE" ]]; then
+    error "Serve args file not found (order of search):\r\n\t* /model_serve_args/$MODEL.$SERVE_CONFIG.json\r\n\t* $SERVE_ARGS_FILE"
+  else
+    log "Found serve args file at $SERVE_ARGS_FILE"
+  fi
 }
 
-if [ -n "$SHOW_CONFIG_NAME" ]; then
-    show_config "$SHOW_CONFIG_NAME"
-    exit 0
-fi
+show_config() {
+    jq ".args" "$SERVE_ARGS_FILE"
+}
+
+build_serve_args
 
 build_serve_command() {
     local serve_args=""
     local is_pytorch_backend=false
     local extra_llm_api_options=""
 
-    if [[ -n $SERVE_CONFIG ]]; then
-      show_config "$SERVE_CONFIG" "\033[32m Using --serve-config $SERVE__CONFIG\033[0m"
-    else
-      SERVE_CONFIG='default'
-      show_config "$SERVE_CONFIG" "\033[32m--serve-config was left blank. Going to use 'default'\033[0m"
-    fi
-
     # Check if the configuration exists
-    if ! jq -e ".\"$SERVE_CONFIG\"" "$SERVE_ARGS_FILE" > /dev/null 2>&1; then
-        soft_error " Configuration '$SERVE_CONFIG' not found in serve-args.json\r\nAvailable configurations\r\n"
+    if ! jq -e ".args" "$SERVE_ARGS_FILE" > /dev/null 2>&1; then
+        soft_error " Configuration '.args' not found in ${SERVE_ARGS_FILE}\r\nAvailable configurations\r\n"
         jq -r 'keys[]' "$SERVE_ARGS_FILE" 2>/dev/null
         exit 1
     fi
@@ -287,7 +186,7 @@ build_serve_command() {
             fi
             echo "Using serve config: $key $value"
         fi
-    done < <(jq -r ".\"$SERVE_CONFIG\".args | to_entries[] | \"\(.key)=\(.value)\"" "$SERVE_ARGS_FILE" 2>/dev/null)
+    done < <(jq -r ".args | to_entries[] | \"\(.key)=\(.value)\"" "$SERVE_ARGS_FILE" 2>/dev/null)
 
     if [[ "$is_pytorch_backend" == true ]]; then
       SERVE_COMMAND="trtllm-serve serve ${serve_args} ${TOKENIZER_DIR}"
@@ -296,7 +195,7 @@ build_serve_command() {
     fi
 }
 
-echo "Starting TensorRT-LLM server for model '$MODEL', tag '$TAG', config '$SERVE_CONFIG'"
+echo "Starting TensorRT-LLM server for model '$MODEL', tag '$TAG', config '$SERVE_ARGS_FILE'"
 echo "Engine path: $ENGINE_PATH"
 
 # Set environment variables

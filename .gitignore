@@ -4,6 +4,7 @@ TensorRT-Model-Optimizer
 engines/**
 model_weights/**
 model_build_configs/**
+model_serve_args/*.json
 scripts/**/model.cache
 scripts/models/*.json
 venv/
@@ -16,3 +17,4 @@ __pycache__/
 *.bak
 extra_llm_api_options/*.yml
 .tool-versions
+.webui*
