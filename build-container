@@ -241,6 +241,7 @@ update_cuda_arch_settings() {
     log "Target TORCH_CUDA_ARCH_LIST: ${TORCH_CUDA_ARCH_LIST}"
     log "Target PyTorch CUDA wheel: ${PYTORCH_CUDA_WHEEL}"
 
+    local memo_dir="$(pwd)"
 
     cd "$TENSORRT_LLM_PATH"
     local torch_cuda_arch_list_semicolon=$(echo "${TORCH_CUDA_ARCH_LIST}" | tr ' ' ';')
@@ -277,19 +278,19 @@ update_cuda_arch_settings() {
         success "Updated DeepSpeed EP installation script"
     fi
 
-    cd "$BUILD_DIR"
+    cd $memo_dir
     success "CUDA architecture settings updated"
 }
 
 # Build base TensorRT-LLM container
 build_tensorrt_llm() {
-    update_cuda_arch_settings
 
     log "Building TensorRT-LLM base container..."
     log "This may take 30-60 minutes..."
 
     cd "$TENSORRT_LLM_PATH"
 
+    git reset --hard HEAD
     # Checkout the selected version
     log "Checking out TensorRT-LLM version: $TENSORRT_LLM_VERSION"
     if [[ "$TENSORRT_LLM_VERSION" == "master" ]]; then
@@ -300,10 +301,14 @@ build_tensorrt_llm() {
     fi
 
     # Initialize submodules
+    git submodule deinit --all --force
+    git clean -fd
     git submodule update --init --recursive
     if command -v git-lfs >/dev/null 2>&1; then
         git lfs pull
     fi
+
+    update_cuda_arch_settings
 
     # Check if image already exists
     if docker image inspect "${BASE_IMAGE_TAG}" >/dev/null 2>&1; then

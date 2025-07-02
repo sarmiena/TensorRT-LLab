@@ -14,4 +14,5 @@ trtllm-bench --model /model_weights/$MODEL/ \
 	throughput \
 	--dataset /tmp/synthetic_128_128.txt \
 	--backend pytorch \
-	--extra_llm_api_options /extra_llm_api_options/pytorch-small-batch.yml
+	--extra_llm_api_options /extra_llm_api_options/pytorch-small-batch.yml \
+	2>&1 | tee /benchmarks/"$MODEL-pytorch-bench-$(date +%m-%d-%Y-%H-%M-%S).txt"

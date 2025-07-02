@@ -15,4 +15,5 @@ trtllm-bench --model /model_weights/$MODEL build \
 trtllm-bench --model /model_weights/$MODEL \
 	throughput \
 	--dataset /tmp/synthetic_128_128.txt \
-	--engine_dir /model_weights/$MODEL/tp_1_pp_1
+	--engine_dir /model_weights/$MODEL/tp_1_pp_1 \
+	2>&1 | tee "$MODEL-enginge-bench-$(date +%m-%d-%Y-%H-%M-%S).txt"
