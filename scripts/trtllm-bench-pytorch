@@ -1,5 +1,7 @@
 #!/bin/bash
 TRTLLM_VERSION=$(trtllm-serve --help 2>&1 | awk '/TensorRT-LLM version:/ {print $4}')
+mkdir -p /benchmarks/$TRTLLM_VERSION
+
 python /app/tensorrt_llm/benchmarks/cpp/prepare_dataset.py \
 	--stdout \
 	--tokenizer /model_weights/$MODEL \
@@ -16,4 +18,4 @@ trtllm-bench --model /model_weights/$MODEL/ \
 	--dataset /tmp/synthetic_128_128.txt \
 	--backend pytorch \
 	--extra_llm_api_options /extra_llm_api_options/pytorch-small-batch.yml \
-	2>&1 | tee /benchmarks/"$MODEL-$TRTLLM_VERSION-pytorch-bench-$(date +%m-%d-%Y-%H-%M-%S).txt"
+	2>&1 | tee /benchmarks/$TRTLLM_VERSION/"$MODEL-pytorch-bench-$(date +%m-%d-%Y-%H%M%S).txt"

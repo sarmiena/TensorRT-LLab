@@ -1,5 +1,6 @@
 #!/bin/bash
 TRTLLM_VERSION=$(trtllm-serve --help 2>&1 | awk '/TensorRT-LLM version:/ {print $4}')
+mkdir -p /benchmarks/$TRTLLM_VERSION
 python /app/tensorrt_llm/benchmarks/cpp/prepare_dataset.py --stdout \
 	--tokenizer /model_weights/$MODEL \
 	token-norm-dist \
@@ -17,4 +18,4 @@ trtllm-bench --model /model_weights/$MODEL \
 	throughput \
 	--dataset /tmp/synthetic_128_128.txt \
 	--engine_dir /model_weights/$MODEL/tp_1_pp_1 \
-	2>&1 | tee "$MODEL-$TRTLLM_VERSION-engine-bench-$TRTLLM_VERSION-$(date +%m-%d-%Y-%H-%M-%S).txt"
+	2>&1 | tee /benchmarks/$TRTLLM_VERSION/"$MODEL-engine-bench-$(date +%m-%d-%Y-%H%M%S).txt"
