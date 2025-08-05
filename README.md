@@ -12,86 +12,20 @@ This project simplifies the process of:
 
 ### Multiple Model Engine Management
 
-The system supports multiple models engines simultaneously:
-```bash
-ubuntu@host:TensorRT-LLab$ ./scripts/start-container.sh --model meta-llama_Llama-3.1-8B-Instruct --gpus all
-root@container:# /scripts/build-engine.sh --tag fp8-tp-optimized --quantize-tp_size 2
-
-root@container:# /scripts/build-engine.sh --list-tags
-
- Available tags:
- Model: meta-llama_Llama-3.1-8B-Instruct
-   - fp8-tp-optimized
-
-root@container:# /scripts/trtllm-serve.sh --tag fp8-tp-optimized
-```
-
-```bash
-ubuntu@host:TensorRT-LLab$ ./scripts/start-container.sh --model meta-llama_Llama-3.1-8B-Instruct --gpus all
-root@container:# /scripts/build-engine.sh --tag fp8-pp-optimized --quantize-pp_size 2
-
-root@container:# /scripts/build-engine.sh --list-tags
-
- Available tags:
- Model: meta-llama_Llama-3.1-8B-Instruct
-   - fp8-tp-optimized
-   - fp8-pp-optimized
-
-root@container:# /scripts/trtllm-serve.sh --tag fp8-pp-optimized
-```
-
-### Build Command Tracking
-
-Each build saves its complete configuration to `build-command.json` in the engine directory, including:
-- Timestamp
-- Applied arguments
-- Override parameters
-- Full command history
-
-This enables reproducible builds and performance comparisons.
-
-## Project Structure
-
-```
-.
-├── engines/                    # Built TensorRT engines (organized by model/tag)
-├── model_weights/             # Downloaded HuggingFace models
-├── scripts/
-│   ├── models/               # Model configuration files
-│   ├── build-engine.sh       # Main build script
-│   ├── trtllm-serve.sh      # Model serving script
-│   └── start-container.sh    # Docker container launcher
-└── run-benchmark.sh          # Benchmarking script
-```
-
 ## Prerequisites
 
 - Docker with GPU support
 - NVIDIA TensorRT-LLM container
 - HuggingFace access token (for downloading models)
 
-## Blackwell SM120 Support
-At the time of this writing, PyPi hasn't approved TensorRT-LLM to have a bigger wheel size. As a result, Blackwell SM_120 (ie RTX PRO 6000 and 5090) don't have support on the main docker images. 
 
-Instead we need to build from source starting at 0.21.0rc2
-
-### Building for SM120
-This will generate a container named tensorrt_llm/release
-    
-```                                                                 
-sudo apt-get update && sudo apt-get -y install git git-lfs && \     
-git lfs install && \                                                
-git clone --depth 1 -b v1.0.0rc0 https://github.com/NVIDIA/TensorRT-LLM.git && \
-cd TensorRT-LLM && \                                
-git submodule update --init --recursive && \
-git lfs pull
-
-
-sudo make -C docker release_build CUDA_ARCHS="120-real"
+## Getting Started by Building Container
+Use the build-container wizard
+```
+./build-container
 ```
 
-
-## Getting Started
+## Getting Started on Serving
 
 ### 1. Download Model from HuggingFace
 
@@ -108,204 +42,43 @@ huggingface-cli download nvidia/Llama-3_3-Nemotron-Super-49B-v1 --local-dir ./mo
 
 ```
 
-### 2. Create Model Configuration
+### 2. Create Model Serve Config for Pytorch
+This path covers serving a model with pytorch as opposed to a native TensorRT-LLM engine. It's unclear if NVIDIA will be
+supporting native TensorRT-LLM engines in the future because some folks at NVIDIA say they're moving towards pytorch.
 
-Create a JSON configuration file in `scripts/models/` with the same name as your model directory:
+Create a JSON configuration file in `./model_serve_args` that will be used to serve your model:
 
 ```bash
-# Example: scripts/models/meta-llama_Llama-3.1-8B-Instruct.json
+# Example: ./model_serve_args/meta-llama_Llama-3.1-8B-Instruct.default.json
 ```
 
-**Configuration Format:**
+**Configuration Format to serve with pytorch**
 ```json
 {
-  "quantize": {
-    "model_dir": "/model",
-    "dtype": "bfloat16",
-    "qformat": "fp8",
-    "kv_cache_dtype": "fp8",
-    "output_dir": "/ckpt",
-    "calib_size": "512"
-  },
-  "trtllm_build": {
-    "checkpoint_dir": "/ckpt",
-    "remove_input_padding": "enable",
-    "kv_cache_type": "paged",
-    "max_batch_size": "512",
-    "max_num_tokens": "16355",
-    "max_seq_len": "16355",
-    "use_paged_context_fmha": "enable",
-    "use_fp8_context_fmha": "enable",
-    "gemm_plugin": "disable",
-    "multiple_profiles": "enable"
+  "notes": "From Alex Steiner NVIDIA saying serve it straight",
+  "args": {
+    "--backend": "pytorch",
+    "--extra_llm_api_options": "pytorch-small-batch.yml",
+    "--host": "0.0.0.0",
+    "--port": "8000",
+    "--max_batch_size": 128,
+    "--tp_size": 1,
+    "--max_num_tokens": 2048
   }
 }
+```
+
+Notice that we're putting additional llm api options there. Let's create that file in ```./extra_llm_api_options```
+
+```
+# extra_llm_api_options/pytorch-small-batch.yml
+print_iter_log: true
+cuda_graph_config:
+  batch_sizes: [1,2,4,8,16,32,64,128,256,512,1024,2048]
 ```
 
 ### 3. Start TensorRT Container
 
 ```bash
-Usage:
-  ./scripts/start-container.sh [<tensorrt-container-name>] --model <model-name> [--gpus <gpu-spec>]
-
-Arguments:
-  <tensorrt-container-name>   (Optional) Name of the TensorRT-LLM container image to use.
-                              Defaults to "tensorrt-llm/release"
-  --model <model-name>        (Required) Model name or path to mount inside the container.
-  --gpus <gpu-spec>           (Optional) GPU specification passed to Docker (e.g., "all" or "device=0,1")
-
-```
-
-**Example:**
-```bash
-ubuntu@host:TensorRT-LLab$ ./scripts/start-container.sh --model meta-llama_Llama-3.1-8B-Instruct --gpus all
-```
-
-### 4. Quantize and Build the Engine
-
-Inside the container, use the build script to create tagged engine builds. 
-
-NOTE: Scripts within the container will use the model the container was given during the ./start-container.sh invocation (via --model)
-
-```bash
-root@container:# /scripts/build-engine.sh --help
-
-Usage:
-  ./build-engine.sh --tag <tag> [--quantize-<arg> <value>] [--trtllm-build-<arg> <value>]
-  ./build-engine.sh --list-tags
-  ./build-engine.sh --show-build-metadata <tag>
-  ./build-engine.sh --delete-tag <tag>
-  ./build-engine.sh --help <tag>
-
-/scripts/build-engine.sh --tag <tag-name> [overrides]
-```
-
-**Examples:**
-
-Basic build:
-```bash
-ubuntu@host:TensorRT-LLab$ ./scripts/start-container.sh --model meta-llama_Llama-3.1-8B-Instruct --gpus all
-root@container:# /scripts/build-engine.sh --tag default
-```
-
-You can also build with custom quantization and TensorRT options that will add/override the defaults in your model's json configuration.
-
-Build with custom quantization:
-```bash
-root@container:# /scripts/build-engine.sh --model meta-llama_Llama-3.1-8B-Instruct --tag int4-awq \
-  --quantize-qformat int4_awq \
-  --quantize-kv_cache_dtype int8
-```
-
-Build with custom TensorRT settings:
-```bash
-root@container:# /scripts/build-engine.sh --model meta-llama_Llama-3.1-8B-Instruct --tag high-throughput \
-  --trtllm-build-max_batch_size 1024 \
-  --trtllm-build-max_num_tokens 32768
-```
-
-**Show build metadata:**
-The ./build-engine.sh --show-build-metadata <tag> is useful to for inspecting exactly what the script produced during quantization and engine building.
-
-```
-root@container:# /scripts/build-engine.sh --show-build-metadata default
-
-Build command for model 'meta-llama_Llama-3.1-8B-Instruct', tag 'default':
-{
-  "timestamp": "2025-06-19T18:02:33+00:00",
-  "model": "meta-llama_Llama-3.1-8B-Instruct",
-  "tag": "default",
-  "commands": {
-    "quantize": "python3 /app/tensorrt_llm/examples/quantization/quantize.py --qformat fp8 --kv_cache_dtype fp8 --dtype bfloat16 --calib_size 512 --output_dir /ckpt --model_dir /model",
-    "trtllm_build": "trtllm-build --remove_input_padding enable  --checkpoint_dir /ckpt  --use_paged_context_fmha enable  --output_dir /engines/meta-llama_Llama-3.1-8B-Instruct/default --gemm_plugin disable  --max_batch_size 512  --multiple_profiles enable  --max_seq_len 16355  --kv_cache_type paged  --max_num_tokens 16355  --use_fp8_context_fmha enable "
-  },
-  "applied_arguments": {
-    "quantize": {
-      "--qformat fp8": "",
-      "--kv_cache_dtype fp8": "",
-      "--dtype bfloat16": "",
-      "--calib_size 512": "",
-      "--output_dir /ckpt": "",
-      "--model_dir /model": ""
-    },
-    "trtllm_build": {
-      "--remove_input_padding enable": "",
-      "--checkpoint_dir /ckpt": "",
-      "--use_paged_context_fmha enable": "",
-      "--output_dir": "/engines/meta-llama_Llama-3.1-8B-Instruct/default",
-      "--gemm_plugin disable": "",
-      "--max_batch_size 512": "",
-      "--multiple_profiles enable": "",
-      "--max_seq_len 16355": "",
-      "--kv_cache_type paged": "",
-      "--max_num_tokens 16355": "",
-      "--use_fp8_context_fmha enable": ""
-    }
-  },
-  "overrides": {
-    "quantize": {},
-    "trtllm_build": {}
-  }
-}
-
-```
-
-**List available tags:**
-```bash
-root@container:# /scripts/build-engine.sh --list-tags
-
-Available tags:
-Model: meta-llama_Llama-3.1-8B-Instruct
-  - default
-  - tp_size2
-
-```
-
-**Delete a tagged build:**
-```bash
-root@container:# /scripts/build-engine.sh --list-tags
-
-Available tags:
-Model: meta-llama_Llama-3.1-8B-Instruct
-  - default
-  - tp_size2
-
-root@container:# /scripts/build-engine.sh --delete-tag tp_size2
-
-Do you want to delete 'tp_size2'? (y/N): y
-Removing 'tp_size2'...
-
-root@container:# /scripts ./build-engine.sh --list-tags
-
-Available tags:
-Model: meta-llama_Llama-3.1-8B-Instruct
-  - default
-
-```
-
-## Running Models
-
-### Serve Model
-
-Inside the container:
-```bash
-root@container:# /scripts/trtllm-serve.sh --tag <tag-name>
-```
-
-**Examples:**
-```bash
-# Serve the fp8-default build
-root@container:# /scripts/trtllm-serve.sh --tag fp8-default
-
-# List available tags for the current model
-root@container:# /scripts/trtllm-serve.sh --list-tags
-```
-
-The server will start on `localhost:8000` by default.
-
-### Benchmark Model
-Suggested to use inference-benchmarker from https://github.com/huggingface/inference-benchmarker from the host machine
-
-```bash
-ubuntu@host:TensorRT-LLab$ ./run-benchmark.example.sh
+./trt-llab trtllm-serve
 ```

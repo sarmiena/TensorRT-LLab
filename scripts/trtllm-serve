@@ -94,12 +94,8 @@ while [[ "$#" -gt 0 ]]; do
     esac
 done
 
-# Validate --tag arg
 if [ -z "$TAG" ]; then
-    echo
-    echo "Error: --tag argument is required"
-    show_help
-    exit 1
+    TAG="default"
 fi
 
 # Check if MODEL environment variable is set
@@ -110,16 +106,6 @@ fi
 
 # Check if engine directory exists
 ENGINE_PATH="/engines/$MODEL/$TAG"
-if [ ! -d "$ENGINE_PATH" ]; then
-    echo "Error: Engine directory '$ENGINE_PATH' not found"
-    echo "Available tags for model $MODEL:"
-    if [ -d "/engines/$MODEL" ]; then
-        ls -1 /engines/$MODEL/ 2>/dev/null || echo "No tags found"
-    else
-        echo "No engine directory found for model $MODEL"
-    fi
-    exit 1
-fi
 
 build_serve_args() {
   if [[ -n $SERVE_CONFIG ]]; then
@@ -191,7 +177,17 @@ build_serve_command() {
     if [[ "$is_pytorch_backend" == true ]]; then
       SERVE_COMMAND="trtllm-serve serve ${serve_args} ${TOKENIZER_DIR}"
     else
-      SERVE_COMMAND="trtllm-serve ${ENGINE_DIR} --tokenizer ${TOKENIZER_DIR} ${serve_args}"
+      if [ ! -d "$ENGINE_PATH" ]; then
+          echo "Error: Engine directory '$ENGINE_PATH' not found"
+          echo "Available tags for model $MODEL:"
+          if [ -d "/engines/$MODEL" ]; then
+              ls -1 /engines/$MODEL/ 2>/dev/null || echo "No tags found"
+          else
+              echo "No engine directory found for model $MODEL"
+          fi
+          exit 1
+      fi
+      SERVE_COMMAND="trtllm-serve ${ENGINE_PATH} --tokenizer ${TOKENIZER_DIR} ${serve_args}"
     fi
 }
 
@@ -200,7 +196,6 @@ echo "Engine path: $ENGINE_PATH"
 
 # Set environment variables
 export KV_CACHE_FREE_GPU_MEM_FRACTION=0.9
-export ENGINE_DIR="$ENGINE_PATH"
 export TOKENIZER_DIR=/model_weights/$MODEL
 
 # Build and execute the serve command
