@@ -34,11 +34,10 @@ Create a directory for your model in `model_weights/` and download the model fil
 ```bash
 
 # Use git-lfs or huggingface-hub to download
-git clone https://huggingface.co/meta-llama/Llama-3.1-8B-Instruct model_weights/meta-llama_Llama-3.1-8B-Instruct
+git clone https://huggingface.co/nvidia/Llama-3.1-8B-Instruct-FP8 model_weights/nvidia--Llama-3.1-8B-Instruct-FP8
 
 OR
-
-huggingface-cli download nvidia/Llama-3_3-Nemotron-Super-49B-v1 --local-dir ./model_weights/ --local-dir-use-symlinks False
+huggingface-cli download nvidia/Llama-3.1-8B-Instruct-FP8 --local-dir ./model_weights/nvidia--Llama-3.1-8B-Instruct-FP8 --local-dir-use-symlinks False
 
 ```
 
@@ -48,12 +47,9 @@ supporting native TensorRT-LLM engines in the future because some folks at NVIDI
 
 Create a JSON configuration file in `./model_serve_args` that will be used to serve your model:
 
-```bash
-# Example: ./model_serve_args/meta-llama_Llama-3.1-8B-Instruct.default.json
-```
-
 **Configuration Format to serve with pytorch**
 ```json
+# Example: ./model_serve_args/nvidia--Llama-3.1-8B-Instruct-FP8.default.json
 {
   "notes": "From Alex Steiner NVIDIA saying serve it straight",
   "args": {
